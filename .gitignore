@@ -1,0 +1,15 @@
+# Poetry / Python stuff
+__pycache__
+.venv
+.pytest_cache
+.ruff_cache
+*.pyc
+*.pyo
+
+# Local environment
+.envrc
+.tool-versions
+
+# Local data
+config.prod.yaml
+data/

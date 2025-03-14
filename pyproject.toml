@@ -1,0 +1,57 @@
+[tool.poetry]
+name = "jbmailbot"
+version = "0.1.0"
+description = "A simple bot for chatting with LLMs via email."
+authors = ["Jerome Boisvert-Chouinard <github@jbchouinard.net>"]
+readme = "README.md"
+packages = [{include = "jbmailbot"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+langchain = "^0.3.20"
+click = "^8.1.8"
+loguru = "^0.7.3"
+pydantic = "^2.10.6"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+ruff = "^0.11.0"
+pudb = "^2024.1.3"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# Enable auto-fixing
+fix = true
+# Enable automatic sorting of imports
+unsafe-fixes = false
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "N", "W"]
+ignore = []
+exclude = [
+    ".git",
+    ".ruff_cache",
+    "__pycache__",
+    "dist",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["jbmailbot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+
+[tool.basedpyright]
+include = ["jbmailbot"]
+typeCheckingMode = "basic"
+reportPrivateUsage = false
+reportIgnoreCommentWithoutRule = false
+reportExplicitAny = false
+reportRedeclaration = false
+reportAny = false
