@@ -1,0 +1,31 @@
+MailBots:
+  - Name: "My LLM Chatbot"
+    SMTP:
+      Username: chatbot@example.com
+      Password: your-password
+      Server: smtp.example.com
+      Port: 465
+      Encryption: SSL/TLS
+      # Port: 587
+      # Encryption: STARTTLS
+      # Port: 25
+      # Encryption: NONE
+    IMAP:
+      Username: chatbot@example.com
+      Password: your-password
+      Server: imap.example.com
+      Port: 993
+      Encryption: SSL/TLS
+      # Port: 143
+      # Encryption: STARTTLS
+      # Port: 143
+      # Encryption: NONE
+
+Storage:
+  Type: SQLite
+  Path: data/jbmailbot.db
+
+Security:
+  Mode: AllowList
+  AllowList:
+    - "me@example.com"

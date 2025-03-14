@@ -258,6 +258,18 @@ files = [
 markers = {main = "platform_system == \"Windows\" or sys_platform == \"win32\"", dev = "sys_platform == \"win32\""}
 
 [[package]]
+name = "config-path"
+version = "1.0.5"
+description = "config_path is a library to work with paths to config folders and files in an OS independent way"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "config-path-1.0.5.tar.gz", hash = "sha256:ed17ad1a0cbdadb2781443a27a624057138611416885acb3fb41132a6d559d77"},
+    {file = "config_path-1.0.5-py3-none-any.whl", hash = "sha256:7a69fbfdacb95d7591621e67265a87960d54d56abffe95d9f93acd342f926292"},
+]
+
+[[package]]
 name = "greenlet"
 version = "3.1.1"
 description = "Lightweight in-process concurrent programming"
@@ -420,6 +432,18 @@ files = [
 all = ["flake8 (>=7.1.1)", "mypy (>=1.11.2)", "pytest (>=8.3.2)", "ruff (>=0.6.2)"]
 
 [[package]]
+name = "imap-tools"
+version = "1.10.0"
+description = "Work with email by IMAP"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "imap_tools-1.10.0-py3-none-any.whl", hash = "sha256:8b8794f0ffe4b3de1e72dea4e0b77ed744d9cd225ecaace81976a599eec0947b"},
+    {file = "imap_tools-1.10.0.tar.gz", hash = "sha256:3d2bee8e2900a58a3bf91e09531e548453f91fae2e491965030a4d96c4a34557"},
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.0.0"
 description = "brain-dead simple config-ini parsing"
@@ -557,14 +581,14 @@ langchain-core = ">=0.3.34,<1.0.0"
 
 [[package]]
 name = "langsmith"
-version = "0.3.13"
+version = "0.3.14"
 description = "Client library to connect to the LangSmith LLM Tracing and Evaluation Platform."
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "langsmith-0.3.13-py3-none-any.whl", hash = "sha256:73aaf52bbc293b9415fff4f6dad68df40658081eb26c9cb2c7bd1ff57cedd695"},
-    {file = "langsmith-0.3.13.tar.gz", hash = "sha256:14014058cff408772acb93344e03cb64174837292d5f1ae09b2c8c1d8df45e92"},
+    {file = "langsmith-0.3.14-py3-none-any.whl", hash = "sha256:1c3565aa5199c7ef40a21898ea9a9132fb3c0dae1d4dafc76ef27a83c5807a2f"},
+    {file = "langsmith-0.3.14.tar.gz", hash = "sha256:54d9f74015bc533201b945ed03de8f45d9cb9cca6e63c58d7d3d277515d4c338"},
 ]
 
 [package.dependencies]
@@ -906,6 +930,27 @@ files = [
 typing-extensions = ">=4.6.0,<4.7.0 || >4.7.0"
 
 [[package]]
+name = "pydantic-settings"
+version = "2.8.1"
+description = "Settings management using Pydantic"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "pydantic_settings-2.8.1-py3-none-any.whl", hash = "sha256:81942d5ac3d905f7f3ee1a70df5dfb62d5569c12f51a5a647defc1c3d9ee2e9c"},
+    {file = "pydantic_settings-2.8.1.tar.gz", hash = "sha256:d5c663dfbe9db9d5e1c646b2e161da12f0d734d422ee56f567d0ea2cee4e8585"},
+]
+
+[package.dependencies]
+pydantic = ">=2.7.0"
+python-dotenv = ">=0.21.0"
+
+[package.extras]
+azure-key-vault = ["azure-identity (>=1.16.0)", "azure-keyvault-secrets (>=4.8.0)"]
+toml = ["tomli (>=2.0.1)"]
+yaml = ["pyyaml (>=6.0.1)"]
+
+[[package]]
 name = "pygments"
 version = "2.19.1"
 description = "Pygments is a syntax highlighting package written in Python."
@@ -940,6 +985,21 @@ pluggy = ">=1.5,<2"
 
 [package.extras]
 dev = ["argcomplete", "attrs (>=19.2)", "hypothesis (>=3.56)", "mock", "pygments (>=2.7.2)", "requests", "setuptools", "xmlschema"]
+
+[[package]]
+name = "python-dotenv"
+version = "1.0.1"
+description = "Read key-value pairs from a .env file and set them as environment variables"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "python-dotenv-1.0.1.tar.gz", hash = "sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca"},
+    {file = "python_dotenv-1.0.1-py3-none-any.whl", hash = "sha256:f7b63ef50f1b690dddf550d03497b66d609393b40b564ed0d674909a68ebf16a"},
+]
+
+[package.extras]
+cli = ["click (>=5.0)"]
 
 [[package]]
 name = "pyyaml"
@@ -1410,4 +1470,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "bd8adc512dda7b07989389c9ff97e52a4f4243ac2ad9affedd468d0b68847690"
+content-hash = "094d42785e0943fa34184000262563b722b571bc649306b26ab423fdeda0a886"

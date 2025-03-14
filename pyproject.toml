@@ -16,6 +16,9 @@ langchain = "^0.3.20"
 click = "^8.1.8"
 loguru = "^0.7.3"
 pydantic = "^2.10.6"
+pydantic-settings = "^2.8.1"
+imap-tools = "^1.10.0"
+config-path = "^1.0.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
