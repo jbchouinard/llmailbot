@@ -133,18 +133,19 @@ class SecurityConfig(BaseModel):
 def config_locations() -> List[Path]:
     unix_common = Path.home() / ".config" / "jbmailbot" / "config.yaml"
     os_convention = ConfigPath("jbmailbot", "pigeonland.net", ".yaml").saveFilePath(mkdir=False)
-    return [Path("./config.yaml"), Path(os_convention), unix_common]
+    return [Path("./config.yaml"), unix_common, Path(os_convention)]
 
 
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
+        secrets_dir=["/run/secrets", "/var/run/jbmailbot/secrets"],
         env_nested_delimiter="__",
         env_prefix="JBMAILBOT_",
         case_sensitive=False,
         yaml_file=config_locations(),
     )
-    mail_bots: List[MailBotConfig] = Field(..., alias="MailBots")
+    mailbots: List[MailBotConfig] = Field(..., alias="MailBots")
     storage: StorageConfig = Field(
         default_factory=lambda: StorageConfig.model_validate({}),
         alias="Storage",
@@ -163,5 +164,8 @@ class AppConfig(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        yaml_settings = YamlConfigSettingsSource(settings_cls)
-        return init_settings, env_settings, dotenv_settings, yaml_settings, file_secret_settings
+        if cls.model_config.get("yaml_file"):
+            yaml_settings = YamlConfigSettingsSource(settings_cls)
+            return init_settings, env_settings, dotenv_settings, yaml_settings, file_secret_settings
+        else:
+            return init_settings, env_settings, dotenv_settings, file_secret_settings

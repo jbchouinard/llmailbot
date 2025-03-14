@@ -6,6 +6,9 @@ authors = ["Jerome Boisvert-Chouinard <github@jbchouinard.net>"]
 readme = "README.md"
 packages = [{include = "jbmailbot"}]
 
+[tool.poetry.scripts]
+jbmailbot = "jbmailbot.__main__:main"
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
