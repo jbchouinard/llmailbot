@@ -1,20 +1,29 @@
+import json
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from jbmailbot.config import (
     AppConfig,
+    ConcurrencyType,
     EncryptionMode,
+    FetchMode,
     IMAPConfig,
+    MailBotConfig,
+    MailFetchConfig,
+    MailSendConfig,
+    MessageQueueType,
+    QueueConfig,
     SecurityConfig,
     SecurityMode,
     SettingsConfigDict,
     SMTPConfig,
+    WorkerConfig,
 )
 
 
-def test_app_config_cls(
+def make_test_app_config_cls(
     env_file: str | None = None,
     secrets_dir: str | None = None,
     env_prefix="TEST_JBMAILBOT_TEST_",
@@ -85,27 +94,66 @@ def test_imap_non_standard_port_raises_error(imap_config_dict):
 
 
 def test_app_config(imap_config_dict, smtp_config_dict):
-    app_config_cls = test_app_config_cls()
+    app_config_cls = make_test_app_config_cls()
     config = app_config_cls(
-        MailBots=[{"Name": "Test Chatbot", "IMAP": imap_config_dict, "SMTP": smtp_config_dict}]  # pyright: ignore[reportArgumentType]
+        MailBots=[
+            {
+                "Name": "Test Chatbot",
+                "Receive": {"IMAP": imap_config_dict, "Mode": "MarkRead", "Interval": 60},
+                "Send": {"SMTP": smtp_config_dict},
+            }
+        ]  # pyright: ignore[reportArgumentType]
     )
     assert config.mailbots[0].name == "Test Chatbot"
 
 
 def test_app_config_from_secrets_dir(tmp_path: Path):
-    security_conf = SecurityConfig(
-        Addresses=[], Mode=SecurityMode.DENYLIST, RateLimit=None, RateLimitPerSender=None
+    mailbot_conf = MailBotConfig(
+        Name="Test Chatbot",
+        Send=MailSendConfig(
+            SMTP=SMTPConfig(
+                Username="chatbot@example.com",
+                Password=SecretStr("my-secret-password"),
+                Server="smtp.example.com",
+                Port=587,
+                Encryption=EncryptionMode.STARTTLS,
+            ),
+        ),
+        Receive=MailFetchConfig(
+            IMAP=IMAPConfig(
+                Username="chatbot@example.com",
+                Password=SecretStr("my-secret-password"),
+                Server="imap.example.com",
+                Port=993,
+                Encryption=EncryptionMode.STARTTLS,
+            ),
+            Mode=FetchMode.MARK_READ,
+            Interval=60,
+            Queue=QueueConfig(
+                Type=MessageQueueType.PROCESS,
+                Parameters={"maxsize": 100},
+            ),
+            Workers=WorkerConfig(
+                Type=ConcurrencyType.THREAD,
+                Count=4,
+            ),
+        ),
+        Security=SecurityConfig(
+            Addresses=[],
+            Mode=SecurityMode.DENYLIST,
+            RateLimit=None,
+            RateLimitPerSender=None,
+        ),
     )
-    security_json = security_conf.model_dump_json(by_alias=True)
-    with (tmp_path / "security").open("w") as f:
-        f.write(security_json)
-    with (tmp_path / "mailbots").open("w") as f:
-        f.write("[]")
 
-    app_config_cls = test_app_config_cls(secrets_dir=tmp_path.as_posix())
+    mailbots = [mailbot_conf.model_dump(mode="json", by_alias=True)]
+    with (tmp_path / "mailbots").open("w") as f:
+        json.dump(mailbots, f)
+
+    app_config_cls = make_test_app_config_cls(secrets_dir=tmp_path.as_posix())
     config = app_config_cls()  # pyright: ignore[reportCallIssue]
-    assert config.security.mode == SecurityMode.DENYLIST
-    assert config.security.addresses == []
-    assert config.security.rate_limit is None
-    assert config.security.rate_limit_per_sender is None
-    assert config.mailbots == []
+    assert config.mailbots[0].name == "Test Chatbot"
+    assert config.mailbots[0].security.mode == SecurityMode.DENYLIST
+    assert config.mailbots[0].security.addresses == []
+    assert config.mailbots[0].security.rate_limit is None
+    assert config.mailbots[0].security.rate_limit_per_sender is None

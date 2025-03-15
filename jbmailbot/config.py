@@ -1,10 +1,11 @@
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from config_path import ConfigPath
 from pydantic import BaseModel, Field, model_validator
+from pydantic.types import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
@@ -37,10 +38,11 @@ class EncryptionMode(CaseInsensitiveStrEnum):
     SSL_TLS = "ssl/tls"
 
 
-class StorageType(CaseInsensitiveStrEnum):
-    """Storage types supported by the application."""
+class MessageQueueType(CaseInsensitiveStrEnum):
+    """Message queue types supported by the application."""
 
-    SQLITE = "sqlite"
+    THREAD = "thread"
+    PROCESS = "process"
 
 
 class SecurityMode(CaseInsensitiveStrEnum):
@@ -61,7 +63,7 @@ DEFAULT_SMTP_ENCRYPTION = {
 class SMTPConfig(BaseModel):
     username: str = Field(..., alias="Username")
     username: str = Field(..., alias="Username")
-    password: str = Field(..., alias="Password")
+    password: SecretStr = Field(..., alias="Password")
     server: str = Field(..., alias="Server")
     port: int = Field(..., alias="Port")
     encryption: Optional[EncryptionMode] = Field(None, alias="Encryption")
@@ -80,6 +82,11 @@ class SMTPConfig(BaseModel):
         return self
 
 
+class FetchMode(CaseInsensitiveStrEnum):
+    MARK_READ = "MarkRead"
+    DELETE = "Delete"
+
+
 DEFAULT_IMAP_ENCRYPTION = {
     143: EncryptionMode.STARTTLS,
     993: EncryptionMode.SSL_TLS,
@@ -88,7 +95,7 @@ DEFAULT_IMAP_ENCRYPTION = {
 
 class IMAPConfig(BaseModel):
     username: str = Field(..., alias="Username")
-    password: str = Field(..., alias="Password")
+    password: SecretStr = Field(..., alias="Password")
     server: str = Field(..., alias="Server")
     port: int = Field(..., alias="Port")
     encryption: Optional[EncryptionMode] = Field(None, alias="Encryption")
@@ -107,15 +114,37 @@ class IMAPConfig(BaseModel):
         return self
 
 
-class MailBotConfig(BaseModel):
-    name: str = Field(..., alias="Name")
-    smtp: SMTPConfig = Field(..., alias="SMTP")
+class QueueConfig(BaseModel):
+    queue_type: MessageQueueType | None = Field(None, alias="Type")
+    parameters: dict[str, Any] = Field(default_factory=dict, alias="Parameters")
+
+
+class ConcurrencyType(CaseInsensitiveStrEnum):
+    THREAD = "Thread"
+    PROCESS = "Process"
+
+
+class WorkerConfig(BaseModel):
+    concurrency_type: ConcurrencyType = Field(ConcurrencyType.THREAD, alias="Type")
+    count: int = Field(4, alias="Count")
+
+
+class MailFetchConfig(BaseModel):
     imap: IMAPConfig = Field(..., alias="IMAP")
+    workers: WorkerConfig = Field(
+        default_factory=lambda: WorkerConfig.model_validate({}),
+        alias="Workers",
+    )
+    queue: QueueConfig = Field(
+        default_factory=lambda: QueueConfig.model_validate({}),
+        alias="Queue",
+    )
+    fetch_mode: FetchMode = Field(FetchMode.MARK_READ, alias="Mode")
+    fetch_interval: int = Field(60, alias="Interval")
 
 
-class StorageConfig(BaseModel):
-    storage_type: StorageType = Field(StorageType.SQLITE, alias="Type")
-    path: Path = Field(Path("jbmailbot.db"), alias="Path")
+class MailSendConfig(BaseModel):
+    smtp: SMTPConfig = Field(..., alias="SMTP")
 
 
 class RateLimitConfig(BaseModel):
@@ -128,6 +157,16 @@ class SecurityConfig(BaseModel):
     addresses: List[str] = Field(default_factory=list, alias="Addresses")
     rate_limit: Optional[RateLimitConfig] = Field(None, alias="RateLimit")
     rate_limit_per_sender: Optional[RateLimitConfig] = Field(None, alias="RateLimitPerSender")
+
+
+class MailBotConfig(BaseModel):
+    name: str = Field(..., alias="Name")
+    receive: MailFetchConfig = Field(..., alias="Receive")
+    send: MailSendConfig = Field(..., alias="Send")
+    security: SecurityConfig = Field(
+        default_factory=lambda: SecurityConfig.model_validate({}),
+        alias="Security",
+    )
 
 
 def config_locations() -> List[Path]:
@@ -146,14 +185,6 @@ class AppConfig(BaseSettings):
         yaml_file=config_locations(),
     )
     mailbots: List[MailBotConfig] = Field(..., alias="MailBots")
-    storage: StorageConfig = Field(
-        default_factory=lambda: StorageConfig.model_validate({}),
-        alias="Storage",
-    )
-    security: SecurityConfig = Field(
-        default_factory=lambda: SecurityConfig.model_validate({}),
-        alias="Security",
-    )
 
     @classmethod
     def settings_customise_sources(
