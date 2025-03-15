@@ -161,7 +161,7 @@ class TaskRunner(abc.ABC, Generic[T]):
         if self.running_task:
             raise RuntimeError(f"{self.__class__.__name__} is already running")
 
-        logger.info(f"Start running task {self.task.name} at interval {interval} seconds")
+        logger.info("Start running task {} with interval={}", self.task.name, interval)
         self.running_task = asyncio.create_task(self.run_forever(interval), name=self.task.name)
 
     def cancel(self):

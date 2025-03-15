@@ -144,7 +144,16 @@ class MailFetchConfig(BaseModel):
 
 
 class MailSendConfig(BaseModel):
+    send_from: str = Field(..., alias="From")
     smtp: SMTPConfig = Field(..., alias="SMTP")
+    workers: WorkerConfig = Field(
+        default_factory=lambda: WorkerConfig.model_validate({}),
+        alias="Workers",
+    )
+    queue: QueueConfig = Field(
+        default_factory=lambda: QueueConfig.model_validate({}),
+        alias="Queue",
+    )
 
 
 class RateLimitConfig(BaseModel):

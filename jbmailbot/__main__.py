@@ -4,16 +4,16 @@ import sys
 
 import aiorun
 import click
-from imap_tools.message import MailMessage
 from loguru import logger
 
-from jbmailbot.config import AppConfig
+from jbmailbot.config import AppConfig, MailBotConfig
+from jbmailbot.email.fetch import FetchMailTask, make_mail_fetcher
+from jbmailbot.email.model import SimpleEmail
+from jbmailbot.email.send import SendMailTask, make_mail_sender
 from jbmailbot.logging import LogLevel, setup_logging
 from jbmailbot.mailbot import RunBotTask, make_mailbot
-from jbmailbot.mailfetch import FetchMailTask, make_mail_fetcher
-from jbmailbot.mailqueue import AnyQueue, make_queue
-from jbmailbot.mailsend import make_mail_sender
-from jbmailbot.runtask import TaskRunner, make_executor
+from jbmailbot.queue import AnyQueue, make_queue
+from jbmailbot.runtask import make_executor
 
 
 def handle_cli_exceptions(func):
@@ -28,27 +28,40 @@ def handle_cli_exceptions(func):
     return wrapper
 
 
+async def run_bot(conf: MailBotConfig):
+    send_queue: AnyQueue[SimpleEmail] = make_queue(
+        conf.send.queue,
+        conf.send.workers.concurrency_type,
+    )
+    sender = make_mail_sender(conf.send)
+    send_executor = make_executor(conf.send.workers)
+    send_runner = SendMailTask(sender, send_queue).runner(send_executor)
+
+    fetch_queue: AnyQueue[SimpleEmail] = make_queue(
+        conf.receive.queue,
+        conf.receive.workers.concurrency_type,
+    )
+    fetcher = make_mail_fetcher(conf.receive)
+    fetch_executor = make_executor(conf.receive.workers)
+    fetch_runner = FetchMailTask(fetcher, fetch_queue).runner(fetch_executor)
+
+    mailbot = make_mailbot(conf)
+    mailbot_runner = RunBotTask(mailbot, recv_queue=fetch_queue, send_queue=send_queue).runner()
+
+    fetch_runner.start(interval=conf.receive.fetch_interval)
+    mailbot_runner.start()
+    send_runner.start()
+    await asyncio.gather(fetch_runner.wait(), mailbot_runner.wait(), send_runner.wait())
+
+
 async def run_app(config: AppConfig):
-    tasks: list[TaskRunner] = []
-    for mailbot_conf in config.mailbots:
-        logger.info("Starting mailbot: {}", mailbot_conf.name)
-        recv_queue: AnyQueue[MailMessage] = make_queue(
-            mailbot_conf.receive.queue,
-            mailbot_conf.receive.workers.concurrency_type,
-        )
-        sender = make_mail_sender(mailbot_conf.send)
-        fetcher = make_mail_fetcher(mailbot_conf.receive)
-        mail_fetch_executor = make_executor(mailbot_conf.receive.workers)
-        mail_fetch_runner = FetchMailTask(fetcher, recv_queue).runner(mail_fetch_executor)
-        mail_fetch_runner.start(interval=mailbot_conf.receive.fetch_interval)
-        tasks.append(mail_fetch_runner)
-        mailbot = make_mailbot(mailbot_conf)
-        bot_runner = RunBotTask(mailbot, recv_queue, sender).runner()
-        bot_runner.start(interval=None)
-        tasks.append(bot_runner)
+    tasks = []
+    for conf in config.mailbots:
+        logger.info("Starting mailbot: {}", conf.name)
+        tasks.append(run_bot(conf))
 
     logger.info("All mailbots started")
-    await asyncio.gather(*(task.wait() for task in tasks))
+    await asyncio.gather(*tasks)
 
 
 @click.command()

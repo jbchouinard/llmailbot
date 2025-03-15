@@ -100,7 +100,7 @@ def test_app_config(imap_config_dict, smtp_config_dict):
             {
                 "Name": "Test Chatbot",
                 "Receive": {"IMAP": imap_config_dict, "Mode": "MarkRead", "Interval": 60},
-                "Send": {"SMTP": smtp_config_dict},
+                "Send": {"From": "chatbot@example.com", "SMTP": smtp_config_dict},
             }
         ]  # pyright: ignore[reportArgumentType]
     )
@@ -111,6 +111,7 @@ def test_app_config_from_secrets_dir(tmp_path: Path):
     mailbot_conf = MailBotConfig(
         Name="Test Chatbot",
         Send=MailSendConfig(
+            From="chatbot@example.com",
             SMTP=SMTPConfig(
                 Username="chatbot@example.com",
                 Password=SecretStr("my-secret-password"),

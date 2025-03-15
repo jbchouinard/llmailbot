@@ -19,7 +19,7 @@ class AnyQueue(abc.ABC, Generic[T]):
         pass
 
     @abc.abstractmethod
-    def put(self, message: T) -> None:
+    def put(self, message: T, block: bool = True, timeout: float | None = None) -> None:
         pass
 
     @abc.abstractmethod
@@ -37,8 +37,8 @@ class ThreadQueue(AnyQueue[T]):
     def is_process_safe(self) -> bool:
         return False
 
-    def put(self, message: T) -> None:
-        self.msgq.put(message)
+    def put(self, message: T, block: bool = True, timeout: float | None = None) -> None:
+        self.msgq.put(message, block=block, timeout=timeout)
 
     def get(self, block: bool = True, timeout: float | None = None) -> T | None:
         try:
@@ -67,8 +67,8 @@ class ManagedQueue(AnyQueue[T]):
     def is_process_safe(self) -> bool:
         return True
 
-    def put(self, message: T) -> None:
-        self.msgq.put(message)
+    def put(self, message: T, block: bool = True, timeout: float | None = None) -> None:
+        self.msgq.put(message, block=block, timeout=timeout)
 
     def get(self, block: bool = True, timeout: float | None = None) -> T | None:
         try:
@@ -88,7 +88,7 @@ QUEUE_TYPE_TO_CLS = {
 }
 
 
-def make_queue[T](config: QueueConfig, concurrency_type: ConcurrencyType) -> AnyQueue[T]:
+def make_queue(config: QueueConfig, concurrency_type: ConcurrencyType) -> AnyQueue:
     queue_type = config.queue_type or DEFAULT_QUEUE_TYPE[concurrency_type]
     queue_cls = QUEUE_TYPE_TO_CLS[queue_type]
-    return queue_cls(**config.parameters)
+    return queue_cls[T](**config.parameters)

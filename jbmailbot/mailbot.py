@@ -1,14 +1,12 @@
 import abc
 import asyncio
-import queue
 from dataclasses import dataclass
 
-from imap_tools.message import MailMessage
 from loguru import logger
 
 from jbmailbot.config import MailBotConfig
-from jbmailbot.mailqueue import AnyQueue
-from jbmailbot.mailsend import MailSender
+from jbmailbot.email.model import SimpleEmail
+from jbmailbot.queue import AnyQueue
 from jbmailbot.runtask import AsyncTask, TaskDone
 
 
@@ -18,51 +16,58 @@ class Message:
     content: str
 
 
-def get_email_plaintext(message: MailMessage, max_body_length: int = 5000) -> str:
-    sender = message.from_
-    subject = message.subject
-    text = message.text
-    return f"From: {sender}\nSubject: {subject}\n{text[:max_body_length]}"
+def quoted(txt: str) -> str:
+    return "> " + "\n> ".join(txt.splitlines())
 
 
-def quote_previous_email(message: MailMessage, reply: str) -> str:
-    quote_title = f"{message.from_} said at {message.date.isoformat()}:"
-    quoted_message = "> " + "\n> ".join(message.text.splitlines())
-    return f"{reply}\n\n{quote_title}\n\n{quoted_message}"
+def quote_email(email: SimpleEmail) -> str:
+    quote_title = f"{email.addr_from} said"
+    if email.sent_at:
+        quote_title += f" at {email.sent_at.strftime('%Y-%m-%d %H:%M')}:"
+    return f"{quote_title}\n\n{quoted(email.body)}"
 
 
 class MailBot(abc.ABC):
+    def __init__(self, name: str, send_from: str):
+        self.name = name
+        self.send_from = send_from
+
     @abc.abstractmethod
     async def compose_reply(self, conversation: str) -> str:
         pass
 
-    async def reply(self, message: MailMessage) -> str:
-        conversation = get_email_plaintext(message)
-        reply = await self.compose_reply(conversation)
-        return quote_previous_email(message, reply)
+    async def reply(self, email: SimpleEmail) -> SimpleEmail | None:
+        conversation = str(email)
+        reply_body = await self.compose_reply(conversation)
+        reply_body = reply_body + "\n\n" + quote_email(email)
+
+        return SimpleEmail.reply(email, self.send_from, reply_body)
 
 
 class HelloMailBot(MailBot):
-    def __init__(self, name: str):
-        self.name = name
-
     async def compose_reply(self, conversation: str) -> str:
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
         return f"{self.name} says: Hello!"
 
 
 def make_mailbot(config: MailBotConfig) -> MailBot:
-    return HelloMailBot(config.name)
+    return HelloMailBot(config.name, config.send.send_from)
 
 
 class RunBotTask(AsyncTask[None]):
     def __init__(
-        self, mailbot: MailBot, queue: AnyQueue[MailMessage], sender: MailSender, retries: int = 3
+        self,
+        mailbot: MailBot,
+        recv_queue: AnyQueue[SimpleEmail],
+        send_queue: AnyQueue[SimpleEmail],
+        retries: int = 3,
+        queue_timeout: int = 5,
     ):
         self.mailbot = mailbot
-        self.mailq = queue
-        self.sender = sender
+        self.recvq = recv_queue
+        self.sendq = send_queue
         self.retries = retries
+        self.queue_timeout = queue_timeout
         super().__init__()
 
     def on_task_exception(self, exc: Exception):
@@ -70,28 +75,30 @@ class RunBotTask(AsyncTask[None]):
 
     async def run(self) -> TaskDone | None:
         # Set a timeout to avoid blocking indefinitely when trying to shutdown
-        try:
-            logger.debug("Waiting for message in mail queue with timeout=5")
-            message = await asyncio.to_thread(self.mailq.get, block=True, timeout=5)
-        except queue.Empty:
-            logger.debug("Mail queue is empty")
-            message = None
+        logger.debug("Waiting for message in mail queue with timeout={}", self.queue_timeout)
+        message = await asyncio.to_thread(self.recvq.get, block=True, timeout=self.queue_timeout)
         if message:
-            logger.debug(
-                "Processing message uid={} id={} from {}",
-                message.uid,
-                message.obj.get("Message-Id"),
-                message.from_,
-            )
             for retry_num in range(self.retries + 1):
                 try:
+                    logger.info(
+                        "{} generating reply to email {}",
+                        self.mailbot.name,
+                        message.summary(),
+                    )
                     reply = await self.mailbot.reply(message)
-                    self.sender.send(reply)
+                    if reply:
+                        logger.debug(
+                            "Putting reply in mail queue with timeout={}",
+                            self.queue_timeout,
+                        )
+                        await asyncio.to_thread(
+                            self.sendq.put, reply, block=True, timeout=self.queue_timeout
+                        )
                     break
                 except Exception:
                     logger.exception(
-                        "Exception replying to message {} (retry {} of {})",
-                        message.uid,
+                        "Exception replying to email {} (retry {} of {})",
+                        message.summary(),
                         retry_num,
                         self.retries,
                     )
