@@ -2,13 +2,14 @@ import abc
 import multiprocessing
 import multiprocessing.managers
 import queue
-
-from imap_tools.message import MailMessage
+from typing import Generic, TypeVar
 
 from jbmailbot.config import ConcurrencyType, MessageQueueType, QueueConfig
 
+T = TypeVar("T")
 
-class MailQueueBase(abc.ABC):
+
+class AnyQueue(abc.ABC, Generic[T]):
     @abc.abstractmethod
     def is_thread_safe(self) -> bool:
         pass
@@ -18,15 +19,15 @@ class MailQueueBase(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def put(self, message: MailMessage) -> None:
+    def put(self, message: T) -> None:
         pass
 
     @abc.abstractmethod
-    def get(self, block: bool = True, timeout: float | None = None) -> MailMessage | None:
+    def get(self, block: bool = True, timeout: float | None = None) -> T | None:
         pass
 
 
-class MailQueue(MailQueueBase):
+class ThreadQueue(AnyQueue[T]):
     def __init__(self, maxsize: int = 0):
         self.msgq = queue.Queue(maxsize=maxsize)
 
@@ -36,10 +37,10 @@ class MailQueue(MailQueueBase):
     def is_process_safe(self) -> bool:
         return False
 
-    def put(self, message: MailMessage) -> None:
+    def put(self, message: T) -> None:
         self.msgq.put(message)
 
-    def get(self, block: bool = True, timeout: float | None = None) -> MailMessage | None:
+    def get(self, block: bool = True, timeout: float | None = None) -> T | None:
         try:
             return self.msgq.get(block=block, timeout=timeout)
         except queue.Empty:
@@ -56,9 +57,9 @@ def get_manager() -> multiprocessing.managers.SyncManager:
     return _manager
 
 
-class ManagedMailQueue(MailQueue):
+class ManagedQueue(AnyQueue[T]):
     def __init__(self, maxsize: int = 0):
-        self.msgq = get_manager().Queue()
+        self.msgq = get_manager().Queue(maxsize=maxsize)
 
     def is_thread_safe(self) -> bool:
         return True
@@ -66,10 +67,10 @@ class ManagedMailQueue(MailQueue):
     def is_process_safe(self) -> bool:
         return True
 
-    def put(self, message: MailMessage) -> None:
+    def put(self, message: T) -> None:
         self.msgq.put(message)
 
-    def get(self, block: bool = True, timeout: float | None = None) -> MailMessage | None:
+    def get(self, block: bool = True, timeout: float | None = None) -> T | None:
         try:
             return self.msgq.get(block=block, timeout=timeout)
         except queue.Empty:
@@ -81,12 +82,13 @@ DEFAULT_QUEUE_TYPE = {
     ConcurrencyType.PROCESS: MessageQueueType.PROCESS,
 }
 
+QUEUE_TYPE_TO_CLS = {
+    MessageQueueType.THREAD: ThreadQueue,
+    MessageQueueType.PROCESS: ManagedQueue,
+}
 
-def make_mail_queue(config: QueueConfig, worker_type: ConcurrencyType) -> MailQueue:
-    queue_type = config.queue_type or DEFAULT_QUEUE_TYPE[worker_type]
-    if queue_type == MessageQueueType.THREAD:
-        return MailQueue(**config.parameters)
-    elif queue_type == MessageQueueType.PROCESS:
-        return ManagedMailQueue(**config.parameters)
-    else:
-        raise ValueError(f"Unknown queue type: {queue_type}")
+
+def make_queue[T](config: QueueConfig, concurrency_type: ConcurrencyType) -> AnyQueue[T]:
+    queue_type = config.queue_type or DEFAULT_QUEUE_TYPE[concurrency_type]
+    queue_cls = QUEUE_TYPE_TO_CLS[queue_type]
+    return queue_cls(**config.parameters)

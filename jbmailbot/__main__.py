@@ -4,13 +4,14 @@ import sys
 
 import aiorun
 import click
+from imap_tools.message import MailMessage
 from loguru import logger
 
 from jbmailbot.config import AppConfig
 from jbmailbot.logging import LogLevel, setup_logging
 from jbmailbot.mailbot import RunBotTask, make_mailbot
 from jbmailbot.mailfetch import FetchMailTask, make_mail_fetcher
-from jbmailbot.mailqueue import make_mail_queue
+from jbmailbot.mailqueue import AnyQueue, make_queue
 from jbmailbot.mailsend import make_mail_sender
 from jbmailbot.runtask import TaskRunner, make_executor
 
@@ -31,7 +32,7 @@ async def run_app(config: AppConfig):
     tasks: list[TaskRunner] = []
     for mailbot_conf in config.mailbots:
         logger.info("Starting mailbot: {}", mailbot_conf.name)
-        recv_queue = make_mail_queue(
+        recv_queue: AnyQueue[MailMessage] = make_queue(
             mailbot_conf.receive.queue,
             mailbot_conf.receive.workers.concurrency_type,
         )

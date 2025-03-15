@@ -27,7 +27,7 @@ T = TypeVar("T")
 
 
 class TaskDone(Generic[T]):
-    """Signal that a background task is done and should not be rescheduled."""
+    """Signal that a task is done and should not be rescheduled."""
 
     def __init__(self, result: T | None = None):
         self.result = result
@@ -104,7 +104,10 @@ class AsyncTask(Task[T]):
 
 class TaskRunner(abc.ABC, Generic[T]):
     """
-    TaskRunner is a base class for task runners.
+    TaskRunner is the base class for task runners. Task runners handle running
+    a task indefinitely in a loop, or at defined intervals.
+
+    See SyncTaskRunner and AsyncTaskRunner for concrete implementations.
     """
 
     def __init__(self, task: Task[T]):
@@ -218,7 +221,7 @@ class SyncTaskRunner(AsyncTaskRunner[T]):
     loop.set_default_executor.
 
     When using a ThreadPoolExecutor, the implementation of SyncTask.run
-    should be thread-safe (e.g., modifications to non-thread-safe objects
+    should be thread-safe (e.g. modifications to non-thread-safe objects
     should be protected by locks).
 
     Due to the GIL, CPU-bound tasks still block other tasks even when

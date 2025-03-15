@@ -7,7 +7,7 @@ from imap_tools.message import MailMessage
 from loguru import logger
 
 from jbmailbot.config import MailBotConfig
-from jbmailbot.mailqueue import MailQueue
+from jbmailbot.mailqueue import AnyQueue
 from jbmailbot.mailsend import MailSender
 from jbmailbot.runtask import AsyncTask, TaskDone
 
@@ -56,7 +56,9 @@ def make_mailbot(config: MailBotConfig) -> MailBot:
 
 
 class RunBotTask(AsyncTask[None]):
-    def __init__(self, mailbot: MailBot, queue: MailQueue, sender: MailSender, retries: int = 3):
+    def __init__(
+        self, mailbot: MailBot, queue: AnyQueue[MailMessage], sender: MailSender, retries: int = 3
+    ):
         self.mailbot = mailbot
         self.mailq = queue
         self.sender = sender

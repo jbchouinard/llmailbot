@@ -8,7 +8,7 @@ from imap_tools.query import AND
 from loguru import logger
 
 from jbmailbot.config import EncryptionMode, FetchMode, IMAPConfig, MailFetchConfig
-from jbmailbot.mailqueue import MailQueue
+from jbmailbot.mailqueue import AnyQueue
 from jbmailbot.runtask import SyncTask, TaskDone
 
 MAILBOX_CLS = {
@@ -87,7 +87,7 @@ def make_mail_fetcher(config: MailFetchConfig) -> MailFetcher:
 
 
 class FetchMailTask(SyncTask[None]):
-    def __init__(self, fetcher: MailFetcher, queue: MailQueue):
+    def __init__(self, fetcher: MailFetcher, queue: AnyQueue[MailMessage]):
         super().__init__(name=f"FetchMail({fetcher.imap_config.server})")
         self.fetcher = fetcher
         self.mailq = queue
