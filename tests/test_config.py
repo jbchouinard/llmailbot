@@ -1,32 +1,29 @@
+# pyright: reportCallIssue=false
 import json
 from pathlib import Path
 
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from jbmailbot.config import (
+from llmailbot.config import (
     AppConfig,
-    ConcurrencyType,
-    EncryptionMode,
-    FetchMode,
+    ChatModelConfig,
+    FilterConfig,
     IMAPConfig,
-    MailBotConfig,
+    MailBotSpec,
     MailFetchConfig,
     MailSendConfig,
-    MessageQueueType,
-    QueueConfig,
     SecurityConfig,
-    SecurityMode,
     SettingsConfigDict,
     SMTPConfig,
-    WorkerConfig,
 )
+from llmailbot.enums import EncryptionMode, FilterMode, OnFetch
 
 
 def make_test_app_config_cls(
     env_file: str | None = None,
     secrets_dir: str | None = None,
-    env_prefix="TEST_JBMAILBOT_TEST_",
+    env_prefix="TEST_LLMAILBOT_TEST_",
     yaml_file: str | None = None,
 ):
     class TestAppConfig(AppConfig):
@@ -95,66 +92,114 @@ def test_imap_non_standard_port_raises_error(imap_config_dict):
 
 def test_app_config(imap_config_dict, smtp_config_dict):
     app_config_cls = make_test_app_config_cls()
+
+    # Create objects instead of dictionaries to satisfy type checking
+    model_config = ChatModelConfig(
+        model="gpt-4.5", model_provider="openai", max_tokens=2048, temperature=0.2
+    )
+
+    mailbot = MailBotSpec(
+        Name="Test Chatbot",
+        Address="chatbot@example.com",
+        AddressRegex=None,
+        MaxInputLength=10000,
+        SystemPrompt="You are a helpful assistant.",
+        ChatModelConfig=model_config,
+    )
+    # Manually set the _address_regex field since it's set by a validator
+    mailbot._address_regex = None
+
+    mail_fetch = MailFetchConfig(
+        Mode=OnFetch.MARK_READ,
+        Interval=60,
+        MaxAgeDays=7,
+        BatchSize=20,
+        IMAP=IMAPConfig(**imap_config_dict),
+    )
+
+    mail_send = MailSendConfig(SMTP=SMTPConfig(**smtp_config_dict))
+
     config = app_config_cls(
-        MailBots=[
-            {
-                "Name": "Test Chatbot",
-                "Receive": {"IMAP": imap_config_dict, "Mode": "MarkRead", "Interval": 60},
-                "Send": {"From": "chatbot@example.com", "SMTP": smtp_config_dict},
-            }
-        ]  # pyright: ignore[reportArgumentType]
+        MailBots=[mailbot],
+        MailFetch=mail_fetch,
+        MailSend=mail_send,
+        ChatModelConfigurableFields=set(["model", "model_provider", "max_tokens", "temperature"]),
     )
     assert config.mailbots[0].name == "Test Chatbot"
 
 
 def test_app_config_from_secrets_dir(tmp_path: Path):
-    mailbot_conf = MailBotConfig(
+    # Create mailbot configuration
+    model_config = ChatModelConfig(
+        model="gpt-4.5", model_provider="openai", max_tokens=2048, temperature=0.2
+    )
+
+    mailbot_conf = MailBotSpec(
         Name="Test Chatbot",
-        Send=MailSendConfig(
-            From="chatbot@example.com",
-            SMTP=SMTPConfig(
-                Username="chatbot@example.com",
-                Password=SecretStr("my-secret-password"),
-                Server="smtp.example.com",
-                Port=587,
-                Encryption=EncryptionMode.STARTTLS,
-            ),
-        ),
-        Receive=MailFetchConfig(
-            IMAP=IMAPConfig(
-                Username="chatbot@example.com",
-                Password=SecretStr("my-secret-password"),
-                Server="imap.example.com",
-                Port=993,
-                Encryption=EncryptionMode.STARTTLS,
-            ),
-            Mode=FetchMode.MARK_READ,
-            Interval=60,
-            Queue=QueueConfig(
-                Type=MessageQueueType.PROCESS,
-                Parameters={"maxsize": 100},
-            ),
-            Workers=WorkerConfig(
-                Type=ConcurrencyType.THREAD,
-                Count=4,
-            ),
-        ),
-        Security=SecurityConfig(
-            Addresses=[],
-            Mode=SecurityMode.DENYLIST,
-            RateLimit=None,
-            RateLimitPerSender=None,
+        Address="chatbot@example.com",
+        AddressRegex=None,
+        MaxInputLength=10000,
+        SystemPrompt="You are a helpful assistant.",
+        ChatModelConfig=model_config,
+    )
+    # Manually set the _address_regex field since it's set by a validator
+    mailbot_conf._address_regex = None
+
+    # Create mail fetch configuration
+    mail_fetch_conf = MailFetchConfig(
+        Mode=OnFetch.MARK_READ,
+        Interval=60,
+        MaxAgeDays=7,
+        BatchSize=100,
+        IMAP=IMAPConfig(
+            Username="chatbot@example.com",
+            Password=SecretStr("my-secret-password"),
+            Server="imap.example.com",
+            Port=993,
+            Encryption=EncryptionMode.STARTTLS,
         ),
     )
 
-    mailbots = [mailbot_conf.model_dump(mode="json", by_alias=True)]
-    with (tmp_path / "mailbots").open("w") as f:
-        json.dump(mailbots, f)
+    # Create mail send configuration
+    mail_send_conf = MailSendConfig(
+        SMTP=SMTPConfig(
+            Username="chatbot@example.com",
+            Password=SecretStr("my-secret-password"),
+            Server="smtp.example.com",
+            Port=587,
+            Encryption=EncryptionMode.STARTTLS,
+        ),
+    )
 
+    # Create security configuration
+    filter_config = FilterConfig(Mode=FilterMode.DENYLIST, Addresses=[])
+    security_conf = SecurityConfig(
+        FilterFrom=filter_config,
+        RateLimit=None,
+        RateLimitPerSender=None,
+        RateLimitPerDomain=None,
+        SecretKey=None,
+        Workers=1,
+    )
+
+    # Write configurations to secret files
+    with (tmp_path / "mailbots").open("w") as f:
+        json.dump([mailbot_conf.model_dump(mode="json", by_alias=True)], f)
+
+    with (tmp_path / "mailfetch").open("w") as f:
+        json.dump(mail_fetch_conf.model_dump(mode="json", by_alias=True), f)
+
+    with (tmp_path / "mailsend").open("w") as f:
+        json.dump(mail_send_conf.model_dump(mode="json", by_alias=True), f)
+
+    with (tmp_path / "security").open("w") as f:
+        json.dump(security_conf.model_dump(mode="json", by_alias=True), f)
+
+    # Load configuration from secrets directory
     app_config_cls = make_test_app_config_cls(secrets_dir=tmp_path.as_posix())
     config = app_config_cls()  # pyright: ignore[reportCallIssue]
+
+    # Assertions
     assert config.mailbots[0].name == "Test Chatbot"
-    assert config.mailbots[0].security.mode == SecurityMode.DENYLIST
-    assert config.mailbots[0].security.addresses == []
-    assert config.mailbots[0].security.rate_limit is None
-    assert config.mailbots[0].security.rate_limit_per_sender is None
+    assert config.security.filter_from.mode == FilterMode.DENYLIST
+    assert config.security.filter_from.addresses == []

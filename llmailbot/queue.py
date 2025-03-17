@@ -4,7 +4,7 @@ import multiprocessing.managers
 import queue
 from typing import Generic, TypeVar
 
-from jbmailbot.config import ConcurrencyType, MessageQueueType, QueueConfig
+from llmailbot.config import QueueConfig, QueueType
 
 T = TypeVar("T")
 
@@ -77,18 +77,15 @@ class ManagedQueue(AnyQueue[T]):
             return None
 
 
-DEFAULT_QUEUE_TYPE = {
-    ConcurrencyType.THREAD: MessageQueueType.THREAD,
-    ConcurrencyType.PROCESS: MessageQueueType.PROCESS,
-}
-
 QUEUE_TYPE_TO_CLS = {
-    MessageQueueType.THREAD: ThreadQueue,
-    MessageQueueType.PROCESS: ManagedQueue,
+    QueueType.THREAD: ThreadQueue,
+    QueueType.PROCESS: ManagedQueue,
 }
 
 
-def make_queue(config: QueueConfig, concurrency_type: ConcurrencyType) -> AnyQueue:
-    queue_type = config.queue_type or DEFAULT_QUEUE_TYPE[concurrency_type]
+def make_queue(config: QueueConfig) -> AnyQueue:
+    queue_type = config.queue_type
+    if queue_type is None:
+        raise ValueError("Queue type must be specified")
     queue_cls = QUEUE_TYPE_TO_CLS[queue_type]
     return queue_cls[T](**config.parameters)

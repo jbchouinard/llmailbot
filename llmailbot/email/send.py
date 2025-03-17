@@ -1,13 +1,13 @@
 import abc
 from smtplib import SMTP, SMTP_SSL
 from ssl import SSLContext
+from typing import Iterable
 
 from loguru import logger
 
-from jbmailbot.config import EncryptionMode, MailSendConfig, SMTPConfig
-from jbmailbot.email.model import SimpleEmail
-from jbmailbot.queue import AnyQueue
-from jbmailbot.runtask import SyncTask, TaskDone
+from llmailbot.config import EncryptionMode, MailSendConfig, SMTPConfig
+from llmailbot.email.model import MailQueue, SimpleEmail
+from llmailbot.taskrun import SyncTask, TaskDone
 
 
 def connect_smtp(
@@ -34,8 +34,21 @@ class MailSender(abc.ABC):
         self.smtp_config = smtp_config
 
     @abc.abstractmethod
-    def send(self, email: SimpleEmail) -> None:
+    def send(self, emails: Iterable[SimpleEmail]) -> None:
         pass
+
+
+class SMTPSender(MailSender):
+    def send(self, emails: Iterable[SimpleEmail]) -> None:
+        with connect_smtp(self.smtp_config) as client:
+            for email in emails:
+                msg = email.to_email_message()
+                client.send_message(
+                    msg=msg,
+                    from_addr=email.addr_from.email,
+                    to_addrs=[a.email for a in email.addr_to],
+                )
+                client.quit()
 
 
 class StdoutFakeMailSender(MailSender):
@@ -44,20 +57,24 @@ class StdoutFakeMailSender(MailSender):
 
 
 def make_mail_sender(config: MailSendConfig) -> MailSender:
-    return StdoutFakeMailSender(config.smtp)
+    return SMTPSender(config.smtp)
 
 
 class SendMailTask(SyncTask[None]):
-    def __init__(self, sender: MailSender, queue: AnyQueue[SimpleEmail]):
-        super().__init__(name=f"SendMail({sender.smtp_config.server})")
+    def __init__(self, sender: MailSender, queue: MailQueue):
+        super().__init__(
+            name=f"SendMail<{sender.smtp_config.username}@{sender.smtp_config.server}>"
+        )
+        self.name = self._name
         self.sender = sender
         self.mailq = queue
 
     def on_task_exception(self, exc: Exception):
-        logger.exception(f"Exception in mail send task {self.name}", exc_info=exc)
+        logger.exception("Exception in mail send task {}", self.name, exc_info=exc)
 
     def run(self) -> TaskDone | None:
+        # TODO: implement batching to avoid re-connecting for every email
         email = self.mailq.get(block=True, timeout=5)
         if email:
-            self.sender.send(email)
-            logger.info(f"Sent email {email.summary()}")
+            self.sender.send([email])
+            logger.success("Sent {}", email.summary())

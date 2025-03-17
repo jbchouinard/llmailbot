@@ -3,6 +3,9 @@ from enum import StrEnum
 
 from loguru import logger
 
+# Between WARNING and ERROR
+logger.level("SECURITY", no=35, color="<red>", icon="🔒")
+
 
 class LogLevel(StrEnum):
     TRACE = "TRACE"
@@ -10,6 +13,7 @@ class LogLevel(StrEnum):
     INFO = "INFO"
     SUCCESS = "SUCCESS"
     WARNING = "WARNING"
+    SECURITY = "SECURITY"
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
 
