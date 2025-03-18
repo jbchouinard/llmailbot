@@ -76,22 +76,26 @@ and assigned the proper roles (user or AI).
 Requirements:
 - Python 3.12+
 
-### Install with pip:
+### Install using pipx:
 
 ```bash
-pip install git+https://github.com/jbchouinard/llmailbot.git
-# Must install langchain packages for LLM providers you want to use
-# See: https://python.langchain.com/docs/integrations/providers/
-pip install langchain-openai langchain-anthropic ...
+# Install the package
+pipx install git+https://github.com/jbchouinard/llmailbot.git
+
+# Then inject the langchain packages you need
+pipx inject llmailbot langchain-openai langchain-anthropic langchain-ollama
 ```
 
-### Install for development with poetry:
+See the [LangChain documentation](https://python.langchain.com/docs/integrations/providers/) for a list of available providers.
+
+### Install using poetry for development:
 
 ```bash
 git clone https://github.com/jbchouinard/llmailbot.git
 cd llmailbot
-poetry install
-poetry add langchain-openai langchain-anthropic ...
+# To add more langchain providers for dev:
+poetry add --group langchain langchain-groq langchain-ollama ...
+poetry install --with langchain
 ```
 
 ## Usage - command line
