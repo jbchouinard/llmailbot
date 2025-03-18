@@ -1,5 +1,7 @@
 # LLMailBot
 
+[![CI](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml/badge.svg)](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml)
+
 LLMailBot enables chatting with LLMs via email. It connects to an email account
 using IMAP/SMTP, then automatically responds to incoming emails using LLM chat models.
 
@@ -156,13 +158,21 @@ Each top-level in the YAML config corresponds to a secret file, for example in `
 
 ## Development
 
-### Apply linting and formatting fixes:
+### CI/CD
+
+This project uses GitHub Actions for continuous integration. The following checks run automatically on push and pull requests:
+
+- Linting with ruff
+- Code formatting with ruff format
+- Unit tests with pytest
+
+### Apply linting and formatting fixes locally:
 
 ```bash
 poetry run ruff check --fix; poetry run ruff format
 ```
 
-### Run tests:
+### Run tests locally:
 
 ```bash
 poetry run pytest tests
