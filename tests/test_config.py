@@ -14,8 +14,9 @@ from llmailbot.config import (
     SecurityConfig,
     SettingsConfigDict,
     SMTPConfig,
+    WorkerPoolConfig,
 )
-from llmailbot.enums import EncryptionMode, OnFetch, VerifyMode
+from llmailbot.enums import EncryptionMode, OnFetch, VerifyMode, WorkerType
 
 
 def make_test_app_config_cls(
@@ -177,6 +178,11 @@ def test_app_config_from_secrets_dir(tmp_path: Path):
         VerifyXMailFrom=VerifyMode.NEVER,
     )
 
+    worker_pool_conf = WorkerPoolConfig(
+        Type="thread",
+        Count=12,
+    )
+
     # Write configurations to secret files
     with (tmp_path / "models").open("w") as f:
         json.dump([model_conf.model_dump(mode="json", by_alias=True)], f)
@@ -190,6 +196,9 @@ def test_app_config_from_secrets_dir(tmp_path: Path):
     with (tmp_path / "security").open("w") as f:
         json.dump(security_conf.model_dump(mode="json", by_alias=True), f)
 
+    with (tmp_path / "workerpool").open("w") as f:
+        json.dump(worker_pool_conf.model_dump(mode="json", by_alias=True), f)
+
     # Load configuration from secrets directory
     app_config_cls = make_test_app_config_cls(secrets_dir=tmp_path.as_posix())
     config = app_config_cls()  # pyright: ignore[reportCallIssue]
@@ -199,3 +208,5 @@ def test_app_config_from_secrets_dir(tmp_path: Path):
     assert config.security.allow_from == ["me@example.org"]
     assert config.imap.username == "chatbot@example.com"
     assert config.smtp.username == "chatbot@example.com"
+    assert config.worker_pool.worker_type == WorkerType.THREAD
+    assert config.worker_pool.count == 12

@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, List, TypeVar
 
+import yaml
 from annotated_types import Ge, Le
 from config_path import ConfigPath
 from pydantic import (
@@ -15,6 +16,7 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     SecretStr,
+    field_serializer,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
@@ -54,7 +56,9 @@ def camel_to_snake_case(camel_str: str) -> str:
 
 
 class ConfigModel(BaseModel):
-    model_config = ConfigDict(alias_generator=snake_to_camel_case)
+    model_config = ConfigDict(
+        alias_generator=snake_to_camel_case,
+    )
 
 
 class SMTPConfig(ConfigModel):
@@ -254,14 +258,11 @@ DEFAULT_QUEUE_TYPE = {
 
 class LLMailBotConfig(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        secrets_dir=secrets_dirs(),
-        env_nested_delimiter="__",
-        env_prefix="LLMAILBOT_",
-        case_sensitive=False,
-        yaml_file=yaml_config_locations(),
-        extra="ignore",
         alias_generator=snake_to_camel_case,
+        case_sensitive=False,
+        extra="ignore",
+        secrets_dir=secrets_dirs(),
+        yaml_file=yaml_config_locations(),
     )
     models: List[ModelSpec] = Field(...)
     chat_model_configurable_fields: Annotated[Opt[set[str]], Field()] = None
@@ -307,6 +308,9 @@ class LLMailBotConfig(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         if cls.model_config.get("yaml_file"):
             yaml_settings = YamlConfigSettingsSource(settings_cls)
-            return init_settings, env_settings, dotenv_settings, yaml_settings, file_secret_settings
+            return init_settings, yaml_settings, file_secret_settings
         else:
-            return init_settings, env_settings, dotenv_settings, file_secret_settings
+            return init_settings, file_secret_settings
+
+    def dump_yaml(self) -> str:
+        return yaml.dump(self.model_dump(mode="json", by_alias=True))

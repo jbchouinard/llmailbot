@@ -1,7 +1,7 @@
 # LLMailBot
 
-LLMailBot is a server app that enables chatting with LLMs via email.
-It automatically responds to incoming emails on the connected account using LLM chat models.
+LLMailBot enables chatting with LLMs via email. It connects to an email account
+using IMAP/SMTP, then automatically responds to incoming emails using LLM chat models.
 
 **If OnFetch=Delete, LLMailBot may delete all the emails in the connected account.**
 
@@ -56,19 +56,20 @@ Currently only plain text emails are supported. But for accessibility reasons,
 well-behaved email clients **should** automatically include a text/plain alternative
 version when sending richly formatted emails.
 
-LLMailBot does not store emails or conversations.
-But, **usually**, when replying, email clients copy the entire email chain in
+LLMailBot does not store emails or track conversations.
+**Usually**, when replying, email clients copy the entire email chain in
 the reply. LLMailBot does the same when it replies.
-So with emails the context of the conversation is usually maintained by default.
+That way the context of the conversation is saved in the emails themselves.
 
-At the moment, the emails are not preprocessed in any way, so the quality of the response
-depends on the ability of the model to "understand" a chain of quoted replies,
-which are usually ordered from newest to oldest, unlike chat messages.
+At the moment, the emails are minimally preprocessed, so the quality of responses
+depends on the ability of the model to "understand" a chain of quoted replies.
+Messages in an email reply chain are usually ordered from newest to oldest, unlike chat messages.
+It seems to work OK with the models I tested, but your mileage may vary.
 
-I might try to implement splitting the reply chain into individual
+I might try to implement splitting the quoted replies into individual
 messages. For now the entire email, including quoted replies, is given to the model
-as one big user message. Ideally it should be split into individual messages and correctly
-assigned the proper roles (user or AI).
+as a single long user message. Ideally it should be split into individual messages
+and assigned the proper roles (user or AI).
 
 ## Installation
 
@@ -100,7 +101,7 @@ python -m llmailbot --help
 
 ## Configuration
 
-**If set to OnFetch=Delete, LLMailBot may delete all the emails in the connected account.**
+**If OnFetch=Delete in the config, LLMailBot may delete all the emails in the connected account.**
 
 Configuration options are documented in config.example.yaml.
 
@@ -115,14 +116,13 @@ copy config.example.yaml config.yaml
 llmailbot loads configuration from multiple sources:
 
 1. **Constructor Arguments**: Values passed directly to the `LLMailBotConfig` constructor
-2. **Environment Variables**: Prefixed with `LLMAILBOT_` (e.g., `LLMAILBOT_MODELS__0__NAME`)
-3. **Dotenv File**: Variables loaded from `.env` file
-4. **YAML Configuration**: Loaded from one of several possible locations
-5. **Secret Files**: Loaded from `/run/secrets` and `/var/run/secrets/llmailbot/`
+2. **YAML File**: Loaded from one of several possible locations
+3. **Secret Files**: Loaded from `/run/secrets` and `/var/run/secrets/llmailbot/`
 
 ### YAML configuration file locations
 
-The app searches for a YAML configuration file in the following locations (in order):
+If the config file location is not specified by the --config CLI options,
+the app searches for a YAML configuration file in the following locations (in order):
 
 1. `./config.yaml` (current directory)
 2. `~/.config/llmailbot/config.yaml` (Unix convention)
@@ -131,48 +131,24 @@ The app searches for a YAML configuration file in the following locations (in or
    - **macOS**: `~/Library/Preferences/net.pigeonland.llmailbot.yaml`
    - **Linux/Other**: `~/.config/net.pigeonland.llmailbot.yaml` (follows XDG Base Directory Specification)
 
-### Environment variables
-
-API keys for LLM providers must be set as environment variables for the configured models, e.g. `OPENAI_API_KEY`.
-
-All configuration options can also be set using environment variables. Use double underscores (`__`) to represent nested structures
-and numeric indices for lists. Environment variables are prefixed with `LLMAILBOT_` and are case-insensitive:
-
-```bash
-# Set the name and address of the first mailbot
-export LLMAILBOT_MODELS__0__NAME="My Environment Variable Bot"
-export LLMAILBOT_MODELS__0__ADDRESS="mybot@example.com"
-```
-
-Complex values, e.g. lists, can be set in JSON format:
-
-```bash
-export LLMAILBOT_SECURITY__ALLOWFROM='["myname@example.com", "*@mydomain.net"]'
-```
-
-Nested maps supports either method:
-
-```bash
-# Set the SMTP server for mail sending
-export LLMAILBOT_SMTP__SERVER="smtp.example.com"
-export LLMAILBOT_SMTP__PORT="465"
-export LLMAILBOT_SMTP__USERNAME="mybot@example.com"
-export LLMAILBOT_SMTP__PASSWORD="my-secret-password"
-
-export LLMAILBOT_SMTP = '{"Server": "...", "Port": 465, "Username": "...", "Password": "..."}'
-```
-
 ### Secret files
 
 Configuration can be loaded from secrets files (e.g. produced by Docker Secrets).
 
-Secret files are loaded from `/run/secrets` and `/var/run/secrets/llmailbot/`. They must be in JSON format.
+Secret files are loaded from `/run/secrets` or `/var/run/secrets/llmailbot/`. They must be in JSON format.
 
-Each top-level in the YAML config corresponds to a secret file, so for example:
-- `/run/secrets/models`
-- `/run/secrets/smtp`
-- `/run/secrets/imap`
-...
+Each top-level in the YAML config corresponds to a secret file, for example in `/run/secrets`:
+
+| Configuration Section       | Secret File Path                           |
+|-----------------------------|--------------------------------------------|
+| Models                      | `/run/secrets/models`                      |
+| SMTP                        | `/run/secrets/smtp`                        |
+| IMAP                        | `/run/secrets/imap`                        |
+| Security                    | `/run/secrets/security`                    |
+| WorkerPool                  | `/run/secrets/workerpool`                  |
+| Queues                      | `/run/secrets/queues`                      |
+| ChatModelConfigurableFields | `/run/secrets/chatmodelconfigurablefields` |
+
 
 ## Development
 

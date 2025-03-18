@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "llmailbot"}]
 
 [tool.poetry.scripts]
-llmailbot = "llmailbot.__main__:main"
+llmailbot = "llmailbot.__main__:cli"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "cython"]
