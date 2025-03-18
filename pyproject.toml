@@ -10,7 +10,7 @@ packages = [{include = "llmailbot"}]
 llmailbot = "llmailbot.__main__:main"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0", "cython"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
@@ -21,15 +21,19 @@ config-path = "^1.0.5"
 email-validator = "^2.2.0"
 imap-tools = "^1.10.0"
 langchain = "^0.3.20"
-langchain-anthropic = {version="^0.3.10", optional=true}
-langchain-openai = {version="^0.3.8", optional=true}
 loguru = "^0.7.3"
 pydantic = "^2.10.6"
 pydantic-settings = "^2.8.1"
+# Optional dependencies
+langchain-anthropic = {version="^0.3.10", optional=true}
+langchain-openai = {version="^0.3.8", optional=true}
+dkimpy = {version="^1.1.8", extras=["ed25519"], optional=true}
+py3dns = {version="^4.0.2", optional=true}
 
 [tool.poetry.extras]
 openai = ["langchain-openai"]
 anthropic = ["langchain-anthropic"]
+dkim = ["dkimpy", "py3dns"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
@@ -63,7 +67,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 
 [tool.basedpyright]
-include = ["llmailbot"]
+include = ["llmailbot", "tests"]
 typeCheckingMode = "basic"
 reportPrivateUsage = false
 reportIgnoreCommentWithoutRule = false

@@ -27,7 +27,7 @@ class AnyQueue(abc.ABC, Generic[T]):
         pass
 
 
-class ThreadQueue(AnyQueue[T]):
+class MemoryQueue(AnyQueue[T]):
     def __init__(self, maxsize: int = 0):
         self.msgq = queue.Queue(maxsize=maxsize)
 
@@ -57,7 +57,7 @@ def get_manager() -> multiprocessing.managers.SyncManager:
     return _manager
 
 
-class ManagedQueue(AnyQueue[T]):
+class ManagedMemoryQueue(AnyQueue[T]):
     def __init__(self, maxsize: int = 0):
         self.msgq = get_manager().Queue(maxsize=maxsize)
 
@@ -78,8 +78,8 @@ class ManagedQueue(AnyQueue[T]):
 
 
 QUEUE_TYPE_TO_CLS = {
-    QueueType.THREAD: ThreadQueue,
-    QueueType.PROCESS: ManagedQueue,
+    QueueType.MEMORY: MemoryQueue,
+    QueueType.MANAGED_MEMORY: ManagedMemoryQueue,
 }
 
 

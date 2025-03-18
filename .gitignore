@@ -5,6 +5,7 @@ __pycache__
 .ruff_cache
 *.pyc
 *.pyo
+dist/
 
 # IDE stuff
 .vscode

@@ -5,7 +5,7 @@ import aiorun
 import click
 from loguru import logger
 
-from llmailbot.config import AppConfig
+from llmailbot.config import LLMailBotConfig
 from llmailbot.core import run_app
 from llmailbot.logging import LogLevel, setup_logging
 
@@ -35,8 +35,8 @@ def main(
     setup_logging(log_file, log_level)
 
     if config_file:
-        AppConfig.model_config["yaml_file"] = config_file
-    app_config = AppConfig()  # pyright: ignore[reportCallIssue]
+        LLMailBotConfig.model_config["yaml_file"] = config_file
+    app_config = LLMailBotConfig()  # pyright: ignore[reportCallIssue]
 
     logger.debug(
         "Loaded config: {config}", config=app_config.model_dump_json(by_alias=True, indent=2)

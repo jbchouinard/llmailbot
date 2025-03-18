@@ -1,22 +1,54 @@
-# Appropriate API keys must be set as environment variables for LLM providers
-# for the configured models
-# e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
-# The corresponding langchain provider packages must also be installed, e.g.
-# pip install langchain-openai langchain-anthropic
-# See https://python.langchain.com/docs/integrations/providers/
-MailBots:
-  # Each bot must have a unique email address (names can be repeated)
-  # The bot will only respond to emails sent to its exact address
-  # If you can receive emails for multiple addresses in the same account,
-  # you can configure multiple bots in the same config file.
-  - Name: MyChatGPT
-    Address: chatgpt@example.com
-    ChatModelConfig:
-      model: gpt-4.5-preview
-      model_provider: openai
-      max_tokens: 2048
-      temperature: 0.2
+# WARNING: don't use your personal email account
+# LLMailBot may delete all your emails if you use the Delete mode
+# use a dedicated email account with nothing you care about in it
+IMAP:
+  # When fetching mail, the bot can either mark emails as read or delete them
+  # Beware: the Delete mode doesn't care whether emails are read or not
+  # So if you start in MarkRead mode then switch to Delete,
+  # already-processed emails may get new replies (and get deleted)
+  # Possible values for OnFetch: MarkRead, Delete
+  OnFetch: MarkRead
+  FetchMaxAgeDays: 0 # Ignore e-mails older than this, e.g. 0=today only, 1=since yesterday, etc.
+  FetchInterval: 300 # Run IMAP fetch at this interval (in seconds)
+  FetchMax: 20 # Max number of e-mails to fetch per interval
+  Username: mybot@example.com
+  Password: my-secret-password
+  Server: imap.example.com
+  Port: 993
+  # Possible values for Encryption: STARTTLS, SSL/TLS, NONE
+  # By default, guess based on port number
+  # Encryption:
+
+SMTP:
+  Username: mybot@example.com
+  Password: my-secret-password
+  Server: smtp.example.com
+  Port: 465
+  # Possible values for Encryption: STARTTLS, SSL/TLS, NONE
+  # By default, guess based on port number
+  # Encryption:
+
+# Each model config should have a unique email address (names can be repeated)
+# Emails that don't match any configured address will be ignored
+#
+# If you can receive emails for multiple addresses in the same account,
+# you can configure multiple models here
+#
+# Many mail services support + addressing (Gmail, Fastmail, Yahoo, Outlook, ...)
+# If example.com supports + addressing and you own mycoolbot@example.com
+# you could configure different models with addresses:
+#  - mycoolbot+gpt@example.com
+#  - mycoolbot+claude@example.com
+#  etc.
+Models:
+  - Address: mybot@example.com
+    Name: MyChatBot
     MaxInputLength: 10000
+    ChatModelConfig:
+      Model: gpt-4.5-preview
+      ModelProvider: openai
+      MaxTokens: 2048
+      Temperature: 0.2
     # The prompt supports the substitution of variables: name, bot_email and user_email
     SystemPrompt: |-
       Your name is {name}. You are a helpful assistant.
@@ -24,82 +56,84 @@ MailBots:
       Your email address is {bot_email}. The user's email address is {user_email}. 
       You must compose a reply. Your reply must be in text/plain format.
       Your reply must not include email headers such as To, From and Subject.
-      Email conversations are usually ordered from newest to oldest message.
-      This is the email conversation:
+      Messages in an email conversation are often ordered from newest to oldest.
+      This is the email conversation you must respond to:
 
-  - Name: MyFlexibleAI
-    # You can use a Python regex to match email addresses, and extract model parameters from the address.
-    # This is simplest to do if you have a catch-all set up for a subdomain.
-    # For example, the regex:
-    AddressRegex: "model=(?P<model>[.0-9a-z-]+)(&provider=(?P<model_provider>[.0-9a-z-]+))?(&temperature=(?P<temperature>[0-9]+(\\.[0-9]+)?))?@ai\\.example\\.com"
-    # Matches addresses like:
-    #    model=claude-3-7-sonnet-latest@ai.example.com
-    #    model=gpt-4o&provider=openai&temperature=0.2@ai.example.com
+    # Advanced feature: regex addresses
+    # Instead of Address, AddressRegex can be specified. It must be a valid Python regex
+    # The bot will respond to any email address that matches the regex
+    # For example, to respond to any email address in the mybot.example.com domain:
     #
-    # (Some forms may not accept email addresses with characters like & or = but they are in fact valid.)
+    # AddressRegex: ".*@mybot\\.example\\.com"
     #
-    # If you don't have a catch-all, + addressing (supported by Gmail, Fastmail, maybe others?) can do the trick.
-    # E.g. if you own youraccount@gmail.com, you can use this regex:
-    # AddressRegex: "youraccount+(?P<model>[.0-9a-z-]+)@gmail.com"
-    # To choose a model using the address, like youraccount+gpt-4.5-preview@gmail.com
-    ChatModelConfig:
-      max_tokens: 2048
-      temperature: 0.2
-    MaxInputLength: 10000
-    SystemPrompt: ...
+    # There is no raw string in yaml so double-escaping regex is necessary, e.g.
+    # a literal . is \\.
+    # a literal backslash is \\\\
+    #
+    # Named capture groups can be used to dynamically set parts of
+    # the chat model config, for example you select different models
+    # based on the address:
+    #
+    # AddressRegex: "mybot\\+(?P<model>[.0-9a-z-]+)@example\\.com"
+    #
+    # Then write to mybot+gpt-4o@example.com, mybot+claude-3-5-sonnet-latest@example.com, etc.
 
-MailFetch:
-  Mode: MarkRead
-  # Mode: Delete
-  # Beware: switching to Delete after running in MarkRead mode will cause
-  # already read emails to be re-processed and deleted
-  # If you want to switch, manually delete existing emails in the account first
-  MaxAgeDays: 0 # Ignore e-mails older than this, e.g. 0=today only, 1=yesterday, etc.
-  Interval: 300 # Interval in seconds to fetch emails
-  BatchSize: 20 # Max number of e-mails to fetch at a time
-  IMAP:
-    Username: myaccount@example.com
-    Password: my-secret-password
-    Server: imap.example.com
-    Port: 993
-    # Encryption: STARTTLS or SSL/TLS or NONE # by default, guess based on port
-
-MailSend:
-  SMTP:
-    Username: myaccount@example.com
-    Password: my-secret-password
-    Server: smtp.example.com
-    Port: 465
-    # Encryption: STARTTLS or SSL/TLS or NONE # by default, guess based on port
+# This is passed to langchain, it determines which model parameters
+# can be changed dynamically. Any parameter that you wish to set
+# in a ChatModelConfig block or with regex capture groups must be listed here.
+# Model and ModelProvider are necessary for llmailbot to function
+# (Both snake_case and CamelCase works)
+ChatModelConfigurableFields:
+  - Model
+  - ModelProvider
+  - MaxTokens
+  - Temperature
 
 Security:
-  RateLimit: # Global rate limit for replying to emails
+  # Global rate limit applied to all incoming emails
+  # Default: 100/day
+  RateLimit:
     Limit: 100
     Window: 1 day
-  RateLimitPerSender: # Rate limit per sender (based on To: header, which can be spoofed)
-    Limit: 10
-    Window: 1 hour
-  FilterFrom: # Block or allow only specific emails or domains (based on To: header, which can be spoofed)
-    Mode: AllowList
-    Addresses:
-      - "myname@example.com" # exact e-mail address
-      - "*@mydomain.net" # any e-mail from this domain
 
-# Fields that can be dynamically configured in langchain chat models
-# At a minimum, model and model_provider are required
-ChatModelConfigurableFields:
-  - model
-  - model_provider
-  - max_tokens
-  - temperature
+  # Rate limit per sender or domain (based on From header, which can be spoofed - see README)
+  # Default: no limit
+  # RateLimitPerDomain:
+  #   Limit: 10
+  #   Window: 1 hour
+  # RateLimitPerSender:
+  #   Limit: 10
+  #   Window: 1 hour
 
+  # Allow/Block address lists (based on From header, which can be spoofed - see README)
+  # You probably dont want random people accessing your bot and using up your LLM credits
+  # If you're absolutely sure you want to let anyone use your bot,
+  # set AllowFrom: [], and AllowAllAddressesIReallyDontMindSpendingAllMyCredits: true
+  # Default: empty list (block all emails)
+  AllowFrom:
+    - "you@example.com" # exact e-mail address
+    - "*@example.com" # any e-mail from this domain
+  BlockFrom: []
+
+  # Experimental features for blocking spoofed emails (see README)
+  # Your mail provider *should* be doing much more robust checks than this already
+  # Possible values are:
+  #  Always: always verify, block if the relevant header is missing
+  #  IfPresent: verify only if the relevant headers are present
+  #  Never: verification disabled
+  # VerifyDKIM: Never  # verify DKIM signatures
+  # VerifyMailFrom: Never  # try to verify that SMTP MAIL FROM matches From exactly (based on Authentication-Results)
+  # VerifyXMailFrom: Never  # verify that X-Mail-From matches From exactly (X-Mail-From is a custom header used by Fastmail, maybe others?)
+#
 # Thread or process pool used for fetching and sending e-mail
-# LLM generation does not use the pool, it is fully async
+# LLM generation uses asyncio, not the worker pool
 WorkerPool:
-  # Type: Process # not recommended
+  # Possible values: Thread, Process (Thread is recommended)
   Type: Thread
   Count: 4
-
+#
+# Settings for the incoming and outgoing mail queues
+# For now its just in-memory queues, might add Redis later
 Queues:
   Parameters:
     maxsize: 100

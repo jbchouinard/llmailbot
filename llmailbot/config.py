@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import re
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, List
+from typing import Annotated, Any, ClassVar, List, TypeVar
 
 from annotated_types import Ge, Le
 from config_path import ConfigPath
@@ -21,29 +21,54 @@ from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettin
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
 from llmailbot.duration import parse_duration
-from llmailbot.enums import EncryptionMode, FilterMode, OnFetch, QueueType, WorkerType
+from llmailbot.enums import (
+    EncryptionMode,
+    FilterMode,
+    OnFetch,
+    QueueType,
+    VerifyMode,
+    WorkerType,
+)
 
 
 class ConfigError(ValueError):
     pass
 
 
+T = TypeVar("T")
+type Opt[T] = T | None
+
+
 Port = Annotated[int, Ge(1), Le(65535)]
 Temperature = Annotated[float, Ge(0.0), Le(1.0)]
 
 
-class SMTPConfig(BaseModel):
+def snake_to_camel_case(snake_str: str) -> str:
+    return "".join(word.title() for word in snake_str.split("_"))
+
+
+def camel_to_snake_case(camel_str: str) -> str:
+    # Insert underscore before uppercase letters and convert to lowercase
+    snake_str = re.sub(r"(?<!^)(?=[A-Z])", "_", camel_str).lower()
+    return snake_str
+
+
+class ConfigModel(BaseModel):
+    model_config = ConfigDict(alias_generator=snake_to_camel_case)
+
+
+class SMTPConfig(ConfigModel):
     default_encryption_by_port: Annotated[dict[Port, EncryptionMode], ClassVar] = {
         25: EncryptionMode.NONE,
         587: EncryptionMode.STARTTLS,
         465: EncryptionMode.SSL_TLS,
     }
 
-    username: str = Field(..., alias="Username")
-    password: SecretStr = Field(..., alias="Password")
-    server: str = Field(..., alias="Server")
-    port: Port = Field(..., alias="Port")
-    encryption: EncryptionMode | None = Field(None, alias="Encryption")
+    username: str = Field(...)
+    password: SecretStr = Field(...)
+    server: str = Field(...)
+    port: Port = Field(465)
+    encryption: Opt[EncryptionMode] = Field(None)
 
     @model_validator(mode="after")
     def validate_encryption(self) -> SMTPConfig:
@@ -59,17 +84,24 @@ class SMTPConfig(BaseModel):
         return self
 
 
-class IMAPConfig(BaseModel):
+class IMAPConfig(ConfigModel):
     default_encryption_by_port: Annotated[dict[Port, EncryptionMode], ClassVar] = {
         143: EncryptionMode.STARTTLS,
         993: EncryptionMode.SSL_TLS,
     }
 
-    username: str = Field(..., alias="Username")
-    password: SecretStr = Field(..., alias="Password")
-    server: str = Field(..., alias="Server")
-    port: Port = Field(..., alias="Port")
-    encryption: EncryptionMode | None = Field(None, alias="Encryption")
+    # Mail server settings
+    username: str = Field(...)
+    password: SecretStr = Field(...)
+    server: str = Field(...)
+    port: Port = Field(993)
+    encryption: Annotated[Opt[EncryptionMode], Field()] = None
+
+    # Fetch settings
+    on_fetch: Annotated[OnFetch, Field()] = OnFetch.MARK_READ
+    fetch_interval: Annotated[PositiveInt, Field()] = 300
+    fetch_max: Annotated[PositiveInt, Field()] = 10
+    fetch_max_age_days: Annotated[NonNegativeInt, Field()] = 1
 
     @model_validator(mode="after")
     def validate_encryption(self) -> IMAPConfig:
@@ -85,32 +117,20 @@ class IMAPConfig(BaseModel):
         return self
 
 
-class MailFetchConfig(BaseModel):
-    imap: IMAPConfig = Field(..., alias="IMAP")
-    fetch_mode: OnFetch = Field(OnFetch.MARK_READ, alias="Mode")
-    fetch_interval: PositiveInt = Field(60, alias="Interval")
-    max_age_days: NonNegativeInt = Field(1, alias="MaxAgeDays")
-    batch_size: PositiveInt = Field(10, alias="BatchSize")
+class QueueConfig(ConfigModel):
+    queue_type: Annotated[Opt[QueueType], Field()] = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    timeout: Annotated[PositiveInt, Field()] = 10
 
 
-class MailSendConfig(BaseModel):
-    smtp: SMTPConfig = Field(..., alias="SMTP")
+class WorkerPoolConfig(ConfigModel):
+    worker_type: Annotated[WorkerType, Field()] = WorkerType.THREAD
+    count: Annotated[PositiveInt, Field()] = 4
 
 
-class QueueConfig(BaseModel):
-    queue_type: Annotated[QueueType | None, Field(alias="Type")] = None
-    parameters: dict[str, Any] = Field(default_factory=dict, alias="Parameters")
-    timeout: Annotated[PositiveInt, Field(alias="Timeout")] = 10
-
-
-class WorkerPoolConfig(BaseModel):
-    worker_type: Annotated[WorkerType, Field(alias="Type")] = WorkerType.THREAD
-    count: Annotated[PositiveInt, Field(alias="Count")] = 4
-
-
-class RateLimitConfig(BaseModel):
-    limit: PositiveInt = Field(..., alias="Limit")
-    window: Annotated[str, Field(alias="Window")] = "1 hour"
+class RateLimitConfig(ConfigModel):
+    limit: PositiveInt = Field(...)
+    window: Annotated[str, Field()] = "1 hour"
 
     _window_timedelta: datetime.timedelta
 
@@ -120,37 +140,44 @@ class RateLimitConfig(BaseModel):
         return self
 
 
-class FilterConfig(BaseModel):
-    mode: Annotated[FilterMode, Field(alias="Mode")] = FilterMode.ALLOWLIST
-    addresses: List[EmailStr] = Field(default_factory=list, alias="Addresses")
+class FilterHeaderConfig(ConfigModel):
+    header: str = Field(...)
+    values: List[str] = Field(default_factory=list)
+    mode: Annotated[FilterMode, Field()] = FilterMode.ALLOWLIST
+    verify: Annotated[VerifyMode, Field()] = VerifyMode.ALWAYS
 
 
-class SecurityConfig(BaseModel):
-    secret_key: Annotated[SecretStr | None, Field(alias="SecretKey")] = None
-    workers: Annotated[PositiveInt, Field(alias="Workers")] = 1
-    filter_from: FilterConfig = Field(
-        default_factory=lambda: FilterConfig(),
-        alias="FilterFrom",
+class SecurityConfig(ConfigModel):
+    rate_limit: RateLimitConfig = Field(
+        default_factory=lambda: RateLimitConfig.model_validate({"Limit": 100, "Window": "1 day"})
     )
-    rate_limit_global: Annotated[RateLimitConfig | None, Field(alias="RateLimit")] = None
-    rate_limit_per_sender: Annotated[RateLimitConfig | None, Field(alias="RateLimitPerSender")] = (
-        None
-    )
-    rate_limit_per_domain: Annotated[RateLimitConfig | None, Field(alias="RateLimitPerDomain")] = (
-        None
-    )
+    rate_limit_per_sender: Annotated[Opt[RateLimitConfig], Field()] = None
+    rate_limit_per_domain: Annotated[Opt[RateLimitConfig], Field()] = None
+
+    # Secure default: dont allow any addresses
+    allow_from: List[EmailStr] = Field(default_factory=list)
+    allow_from_all_i_want_to_spend_it_all: Annotated[
+        bool, Field(alias="AllowAllAddressesIReallyDontMindSpendingAllMyCredits")
+    ] = False
+    block_from: Annotated[Opt[List[EmailStr]], Field()] = None
+
+    filter_headers: Annotated[Opt[List[FilterHeaderConfig]], Field()] = None
+
+    verify_dkim: Annotated[VerifyMode, Field(alias="VerifyDKIM")] = VerifyMode.NEVER
+    verify_mail_from: Annotated[VerifyMode, Field()] = VerifyMode.NEVER
+    verify_x_mail_from: Annotated[VerifyMode, Field()] = VerifyMode.NEVER
 
 
-class ChatModelConfig(BaseModel):
+class ChatModelConfig(ConfigModel):
     model_config = ConfigDict(extra="allow")
-    model: str | None = None
-    model_provider: str | None = None
+    model: Opt[str] = None
+    model_provider: Opt[str] = None
     max_tokens: PositiveInt = 1024
     temperature: Temperature = 0.2
 
     def chat_model_config(self) -> dict[str, Any]:
         config = self.model_extra or {}
-        config = {k.lower(): v for k, v in config.items()}
+        config = {camel_to_snake_case(k): v for k, v in config.items()}
         config.update(
             {
                 "model": self.model,
@@ -162,24 +189,24 @@ class ChatModelConfig(BaseModel):
         return config
 
 
-class MailBotSpec(BaseModel):
-    name: str = Field(..., alias="Name")
+class ModelSpec(ConfigModel):
+    name: str = Field(...)
 
-    address: EmailStr | None = Field(None, alias="Address")
-    address_regex: str | None = Field(None, alias="AddressRegex")
+    address: Annotated[Opt[EmailStr], Field()] = None
+    address_regex: Annotated[Opt[str], Field()] = None
 
-    max_input_length: PositiveInt = Field(5000, alias="MaxInputLength")
-    system_prompt: str = Field(..., alias="SystemPrompt")
+    max_input_length: Annotated[PositiveInt, Field()] = 5000
+    system_prompt: str = Field(...)
 
-    model_params: ChatModelConfig = Field(
+    params: ChatModelConfig = Field(
         default_factory=lambda: ChatModelConfig(),
         alias="ChatModelConfig",
     )
 
-    _address_regex: re.Pattern[str] | None
+    _address_regex: Opt[re.Pattern[str]]
 
     @model_validator(mode="after")
-    def validate_exactly_one_email_addr(self) -> MailBotSpec:
+    def validate_exactly_one_email_addr(self) -> ModelSpec:
         if self.address_regex is not None and self.address is None:
             return self
         if self.address is not None and self.address_regex is None:
@@ -187,7 +214,7 @@ class MailBotSpec(BaseModel):
         raise ConfigError("exactly one of Address or AddressRegex must be set")
 
     @model_validator(mode="after")
-    def validate_address_regex(self) -> MailBotSpec:
+    def validate_address_regex(self) -> ModelSpec:
         if self.address_regex is not None:
             try:
                 self._address_regex = re.compile(self.address_regex)
@@ -197,8 +224,8 @@ class MailBotSpec(BaseModel):
             self._address_regex = None
         return self
 
-    def chat_model_config(self, email_addr: str | None = None) -> dict[str, Any]:
-        model_config = self.model_params.chat_model_config()
+    def chat_model_config(self, email_addr: Opt[str] = None) -> dict[str, Any]:
+        model_config = self.params.chat_model_config()
         if email_addr and self._address_regex:
             if m := self._address_regex.match(email_addr):
                 for k, v in m.groupdict().items():
@@ -208,55 +235,57 @@ class MailBotSpec(BaseModel):
         return model_config
 
 
-def config_locations() -> List[Path]:
+def yaml_config_locations() -> List[Path]:
     unix_common = Path.home() / ".config" / "llmailbot" / "config.yaml"
     os_convention = ConfigPath("llmailbot", "pigeonland.net", ".yaml").saveFilePath(mkdir=False)
     return [Path("./config.yaml"), unix_common, Path(os_convention)]
 
 
-DEFAULT_QUEUE_TYPE = {
-    WorkerType.THREAD: QueueType.THREAD,
-    WorkerType.PROCESS: QueueType.PROCESS,
-}
-
-
-def secrets_dir():
+def secrets_dirs():
     paths = [Path("/run/secrets"), Path("/var/run/llmailbot/secrets")]
     return [p for p in paths if p.exists()]
 
 
-class AppConfig(BaseSettings):
+DEFAULT_QUEUE_TYPE = {
+    WorkerType.THREAD: QueueType.MEMORY,
+    WorkerType.PROCESS: QueueType.MANAGED_MEMORY,
+}
+
+
+class LLMailBotConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
-        secrets_dir=secrets_dir(),
+        secrets_dir=secrets_dirs(),
         env_nested_delimiter="__",
         env_prefix="LLMAILBOT_",
         case_sensitive=False,
-        yaml_file=config_locations(),
+        yaml_file=yaml_config_locations(),
         extra="ignore",
+        alias_generator=snake_to_camel_case,
     )
-    mailbots: List[MailBotSpec] = Field(..., alias="MailBots")
-    mailfetch: MailFetchConfig = Field(..., alias="MailFetch")
-    mailsend: MailSendConfig = Field(..., alias="MailSend")
-    chat_model_configurable_fields: set[str] | None = Field(
-        None, alias="ChatModelConfigurableFields"
-    )
-    queues: QueueConfig = Field(
-        default_factory=lambda: QueueConfig(),
-        alias="Queues",
-    )
-    worker_pool: WorkerPoolConfig = Field(
-        default_factory=lambda: WorkerPoolConfig(),
-        alias="WorkerPool",
-    )
-    security: SecurityConfig = Field(
-        default_factory=lambda: SecurityConfig(),
-        alias="Security",
-    )
+    models: List[ModelSpec] = Field(...)
+    chat_model_configurable_fields: Annotated[Opt[set[str]], Field()] = None
+
+    security: SecurityConfig = Field(default_factory=lambda: SecurityConfig())
+
+    imap: IMAPConfig = Field(..., alias="IMAP")
+    smtp: SMTPConfig = Field(..., alias="SMTP")
+
+    worker_pool: WorkerPoolConfig = Field(default_factory=lambda: WorkerPoolConfig())
+
+    queues: QueueConfig = Field(default_factory=lambda: QueueConfig())
 
     @model_validator(mode="after")
-    def validate_unique_bot_addresses(self) -> AppConfig:
-        addresses = [bot.address for bot in self.mailbots]
+    def normalize_chat_model_configurable_fields(self) -> LLMailBotConfig:
+        if self.chat_model_configurable_fields is not None:
+            self.chat_model_configurable_fields = set(
+                [camel_to_snake_case(f) for f in self.chat_model_configurable_fields]
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_unique_bot_addresses(self) -> LLMailBotConfig:
+        addresses = [bot.address for bot in self.models]
         if len(addresses) != len(set(addresses)):
             raise ConfigError("Each mailbot must use a unique email address")
         return self

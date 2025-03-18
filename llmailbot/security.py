@@ -1,13 +1,14 @@
 import abc
 import datetime
+import re
 from enum import Enum
 from typing import Iterable, NamedTuple
 
 from loguru import logger
-from pydantic import SecretStr
 
 from llmailbot.config import FilterMode, SecurityConfig
 from llmailbot.email.model import SimpleEmail
+from llmailbot.enums import VerifyMode
 
 
 class Action(Enum):
@@ -30,35 +31,185 @@ class Rule(abc.ABC):
         pass
 
 
-class AllowAll(Rule):
+VerifyDKIM: type[Rule] = None  # pyright: ignore[reportAssignmentType]
+
+try:
+    from llmailbot.dkim import DKIMException, DnsError, VerificationResult, verify_dkim_signatures
+
+    class VerifyDKIM(Rule):
+        """
+        Blocks emails with an invalid DKIM signature.
+
+        In strict mode, blocks emails without a DKIM signature.
+
+        DKIM verification is most likely already done by the mail server,
+        but not necessarily strictly.
+
+        This check helps prevent address spoofing, but will block
+        some legitimate emails.
+        """
+
+        def __init__(self, strict: bool):
+            self.strict = strict
+
+        def check(self, email: SimpleEmail) -> RuleResult:
+            assert email.parsed_message and email.raw_message_data
+
+            dkim_signatures = email.parsed_message.get_all("DKIM-Signature")
+            if not dkim_signatures:
+                if self.strict:
+                    return RuleResult(Action.BLOCK, "No DKIM signature")
+                else:
+                    return RuleResult(Action.ALLOW, None)
+
+            try:
+                result = verify_dkim_signatures(email)
+            except DnsError as exc:
+                logger.exception("DNS error while verifying DKIM signature")
+                return RuleResult(Action.BLOCK, f"DKIM DNS error ({str(exc)})")
+            except DKIMException as exc:
+                logger.exception("DKIM verification error")
+                return RuleResult(Action.BLOCK, f"DKIM verification error ({str(exc)})")
+
+            if result == VerificationResult.FAIL:
+                return RuleResult(Action.BLOCK, "DKIM verification failed")
+            if result == VerificationResult.PASS:
+                return RuleResult(Action.ALLOW, None)
+            if self.strict:
+                return RuleResult(Action.BLOCK, "No DKIM signature")
+            else:
+                return RuleResult(Action.ALLOW, None)
+
+except ImportError:
+    logger.debug("dkim extras are not installed; VerifyDKIM is not available")
+
+
+RE_SMTP_MAILFROM = re.compile(r"smtp.mailfrom=(?P<mailfrom>[^;\s]+)", re.MULTILINE)
+
+
+class VerifyMailFrom(Rule):
+    """
+    Verifies that SMTP MAIL FROM matches the From header, by
+    looking for smtp.mailfrom in Authentication-Results headers.
+
+    In strict mode, blocks emails for which smtp.mailfrom cannot be
+    determined.
+
+    This check helps prevent address spoofing, but will block
+    many legitimate emails.
+    """
+
+    AUTHENTICATION_RESULTS_HEADERS = (
+        "Authentication-Results",
+        "ARC-Authentication-Results",
+    )
+
+    def __init__(self, strict: bool = True):
+        self.strict = strict
+
     def check(self, email: SimpleEmail) -> RuleResult:
+        assert email.parsed_message
+
+        smtp_mailfrom = None
+        found_in_header = None
+        for header in self.AUTHENTICATION_RESULTS_HEADERS:
+            if m := RE_SMTP_MAILFROM.search(email.parsed_message.get(header, "")):
+                smtp_mailfrom = m.group("mailfrom")
+                found_in_header = header
+                break
+
+        if smtp_mailfrom is None:
+            if self.strict:
+                return RuleResult(Action.BLOCK, "smtp.mailfrom not found")
+            else:
+                return RuleResult(Action.ALLOW, None)
+
+        from_email = email.addr_from.email
+        if smtp_mailfrom == from_email:
+            return RuleResult(Action.ALLOW, None)
+        else:
+            return RuleResult(
+                Action.BLOCK,
+                f"smtp.mailfrom={smtp_mailfrom} in {found_in_header} "
+                f"header does not match From={from_email}",
+            )
+
+
+class VerifyXMailFrom(Rule):
+    """
+    Verifies that the X-Mail-From header matches the From header.
+
+    X-Mail-From is a custom header used by at least one provider
+    (Fastmail) to set to the value of SMTP MAIL FROM.
+
+    In strict mode, blocks emails which don't have the X-Mail-From header.
+
+    This check helps prevent address spoofing, but will block
+    many legitimate emails.
+    """
+
+    MAIL_FROM_HEADER = "X-Mail-From"
+
+    def __init__(self, strict: bool = True):
+        self.strict = strict
+
+    def check(self, email: SimpleEmail) -> RuleResult:
+        assert email.parsed_message
+        x_mail_from = email.parsed_message.get(self.MAIL_FROM_HEADER)
+        if self.strict and x_mail_from is None:
+            return RuleResult(Action.BLOCK, f"{self.MAIL_FROM_HEADER} header is missing")
+        if x_mail_from != email.addr_from.email:
+            return RuleResult(
+                Action.BLOCK, f"{self.MAIL_FROM_HEADER} header does not match From header"
+            )
         return RuleResult(Action.ALLOW, None)
 
 
-class SecretKeyRule(Rule):
+class FilterHeader(Rule):
     """
-    Checks if the email body starts with a secret key.
-    If it does, the secret key is removed from the body.
+    Filter based on the value of an arbitrary email header.
+
+    In strict mode, blocks emails which don't have the header.
     """
 
-    def __init__(self, secret_key: SecretStr):
-        self.secret_key = secret_key
+    def __init__(
+        self,
+        header: str,
+        values: Iterable[str],
+        mode: FilterMode,
+        strict: bool = True,
+    ):
+        self.header = header
+        self.values = set(values)
+        self.mode = mode
+        self.strict = strict
 
     def check(self, email: SimpleEmail) -> RuleResult:
-        key = self.secret_key.get_secret_value()
-        body = email.body.lstrip()
-        if body.startswith(key):
-            email.body = email.body[len(key) :].lstrip()
-            return RuleResult(Action.ALLOW, None)
-        return RuleResult(Action.BLOCK, "secret key check failed")
+        assert email.parsed_message
+        header_value = email.parsed_message.get(self.header)
+        if header_value is None:
+            if self.strict:
+                return RuleResult(Action.BLOCK, f"{self.header} header is missing")
+            else:
+                return RuleResult(Action.ALLOW, None)
+
+        if self.mode == FilterMode.DENYLIST and header_value in self.values:
+            return RuleResult(Action.BLOCK, f"{self.header} header value is in deny list")
+        if self.mode == FilterMode.ALLOWLIST and header_value not in self.values:
+            return RuleResult(Action.BLOCK, f"{self.header} header value is not in allow list")
+        return RuleResult(Action.ALLOW, None)
 
 
-class FilterSenderRule(Rule):
+class FilterFrom(Rule):
     """
     Checks if the email sender is in a list of allowed or denied addresses.
     """
 
-    def __init__(self, mode: FilterMode, addresses: Iterable[str]):
+    def __init__(
+        self,
+        mode: FilterMode,
+        addresses: Iterable[str],
+    ):
         self.mode = mode
         self.addresses = set()
         self.domains = set()
@@ -69,12 +220,18 @@ class FilterSenderRule(Rule):
             else:
                 self.addresses.add(addr)
 
+        logger.debug("FilterFrom: {} {} {}", mode, self.addresses, self.domains)
+
     def is_in_list(self, addr: str) -> bool:
         _, domain = addr.split("@", 1)
-        return domain in self.domains or addr in self.addresses
+        in_list = domain in self.domains or addr in self.addresses
+        return in_list
 
     def check(self, email: SimpleEmail) -> RuleResult:
         sender = email.addr_from.email
+        if sender is None:
+            return RuleResult(Action.BLOCK, "From header is missing")
+
         sender_in_list = self.is_in_list(sender)
         if self.mode == FilterMode.DENYLIST and sender_in_list:
             return RuleResult(Action.BLOCK, f"{sender} is in deny list")
@@ -176,7 +333,8 @@ class RateLimitPerDomainRule(RateLimitPerSenderRule):
 
 class SecurityFilter:
     """
-    SecurityFilter filters emails based on a list of rules.
+    SecurityFilter applies the provided rules to an email to
+    decide whether to block or allow it.
     """
 
     def __init__(self, rules: Iterable[Rule]):
@@ -193,26 +351,42 @@ class SecurityFilter:
 
 def make_security_filter(config: SecurityConfig, name_prefix: str = "") -> SecurityFilter | None:
     rules = []
-    if config.secret_key:
-        rules.append(SecretKeyRule(config.secret_key))
-    if config.filter_from:
-        rules.append(FilterSenderRule(config.filter_from.mode, config.filter_from.addresses))
-    if config.rate_limit_global and config.rate_limit_global.limit is not None:
-        rules.append(
-            RateLimitRule(
-                config.rate_limit_global._window_timedelta,
-                config.rate_limit_global.limit,
-                f"{name_prefix}global",
-            )
+
+    if not config.allow_from and config.allow_from_all_i_want_to_spend_it_all:
+        pass
+    else:
+        rules.append(FilterFrom(FilterMode.ALLOWLIST, config.allow_from))
+
+    if config.block_from:
+        rules.append(FilterFrom(FilterMode.DENYLIST, config.block_from))
+
+    if config.verify_mail_from == VerifyMode.IF_PRESENT:
+        rules.append(VerifyMailFrom(strict=False))
+    elif config.verify_mail_from == VerifyMode.ALWAYS:
+        rules.append(VerifyMailFrom(strict=True))
+
+    if config.verify_x_mail_from == VerifyMode.IF_PRESENT:
+        rules.append(VerifyXMailFrom(strict=False))
+    elif config.verify_x_mail_from == VerifyMode.ALWAYS:
+        rules.append(VerifyXMailFrom(strict=True))
+
+    if config.verify_dkim == VerifyMode.IF_PRESENT:
+        assert VerifyDKIM is not None, (
+            "dkim extras not installed, VerifyDKIM option is not available"
         )
-    if config.rate_limit_per_domain and config.rate_limit_per_domain.limit is not None:
-        rules.append(
-            RateLimitPerDomainRule(
-                config.rate_limit_per_domain._window_timedelta,
-                config.rate_limit_per_domain.limit,
-                f"{name_prefix}per-domain",
-            )
+        rules.append(VerifyDKIM(strict=False))
+    elif config.verify_dkim == VerifyMode.ALWAYS:
+        assert VerifyDKIM is not None, (
+            "dkim extras not installed, VerifyDKIM option is not available"
         )
+        rules.append(VerifyDKIM(strict=True))
+
+    for fheader in config.filter_headers or []:
+        if fheader.verify == VerifyMode.IF_PRESENT:
+            rules.append(FilterHeader(fheader.header, fheader.values, fheader.mode, False))
+        elif fheader.verify == VerifyMode.ALWAYS:
+            rules.append(FilterHeader(fheader.header, fheader.values, fheader.mode, True))
+
     if config.rate_limit_per_sender and config.rate_limit_per_sender.limit is not None:
         rules.append(
             RateLimitPerSenderRule(
@@ -221,6 +395,25 @@ def make_security_filter(config: SecurityConfig, name_prefix: str = "") -> Secur
                 f"{name_prefix}per-sender",
             )
         )
+
+    if config.rate_limit_per_domain and config.rate_limit_per_domain.limit is not None:
+        rules.append(
+            RateLimitPerDomainRule(
+                config.rate_limit_per_domain._window_timedelta,
+                config.rate_limit_per_domain.limit,
+                f"{name_prefix}per-domain",
+            )
+        )
+
+    if config.rate_limit and config.rate_limit.limit is not None:
+        rules.append(
+            RateLimitRule(
+                config.rate_limit._window_timedelta,
+                config.rate_limit.limit,
+                f"{name_prefix}global",
+            )
+        )
+
     if not rules:
         return None
     return SecurityFilter(rules)

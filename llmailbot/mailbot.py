@@ -8,7 +8,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
-from llmailbot.config import MailBotSpec
+from llmailbot.config import ModelSpec
 from llmailbot.email.model import MailQueue, SimpleEmail
 from llmailbot.taskrun import AsyncTask, TaskDone
 
@@ -32,17 +32,17 @@ class MailBot(abc.ABC):
     @abc.abstractmethod
     async def compose_reply(
         self,
-        spec: MailBotSpec,
+        spec: ModelSpec,
         bot_email: str,
         user_email: str,
         conversation: str,
     ) -> str:
         pass
 
-    def __init__(self, specs: list[MailBotSpec]):
+    def __init__(self, specs: list[ModelSpec]):
         self.specs = specs
 
-    def _get_spec(self, to_addrs: list[str]) -> tuple[str, MailBotSpec] | tuple[None, None]:
+    def _get_spec(self, to_addrs: list[str]) -> tuple[str, ModelSpec] | tuple[None, None]:
         for addr in to_addrs:
             for spec in self.specs:
                 if spec._address_regex is not None:
@@ -72,7 +72,7 @@ class HelloMailBot(MailBot):
 
     async def compose_reply(
         self,
-        spec: MailBotSpec,
+        spec: ModelSpec,
         bot_email: str,
         user_email: str,
         conversation: str,
@@ -102,7 +102,7 @@ class LangChainMailBot(MailBot):
 
     def __init__(
         self,
-        specs: list[MailBotSpec],
+        specs: list[ModelSpec],
         configurable_fields: Iterable[str] | None = None,
     ):
         super().__init__(specs)
@@ -113,14 +113,14 @@ class LangChainMailBot(MailBot):
             configurable_fields=list(self.configurable_fields),
         )
 
-    def _build_system_prompt(self, spec: MailBotSpec, bot_email: str, user_email: str) -> str:
+    def _build_system_prompt(self, spec: ModelSpec, bot_email: str, user_email: str) -> str:
         return spec.system_prompt.format(
             name=spec.name,
             bot_email=bot_email,
             user_email=user_email,
         )
 
-    def _get_chat_model_config(self, spec: MailBotSpec, bot_email: str) -> dict[str, Any]:
+    def _get_chat_model_config(self, spec: ModelSpec, bot_email: str) -> dict[str, Any]:
         model_config = {}
         for k, v in spec.chat_model_config(bot_email).items():
             k = k.lower()
@@ -133,7 +133,7 @@ class LangChainMailBot(MailBot):
 
     async def compose_reply(
         self,
-        spec: MailBotSpec,
+        spec: ModelSpec,
         bot_email: str,
         user_email: str,
         conversation: str,
@@ -163,7 +163,7 @@ class LangChainMailBot(MailBot):
 
 
 def make_mailbot(
-    specs: list[MailBotSpec],
+    specs: list[ModelSpec],
     configurable_fields: Iterable[str] | None = None,
     hello_bot: bool = False,
 ) -> MailBot:

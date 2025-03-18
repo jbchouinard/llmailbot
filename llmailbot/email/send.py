@@ -5,7 +5,7 @@ from typing import Iterable
 
 from loguru import logger
 
-from llmailbot.config import EncryptionMode, MailSendConfig, SMTPConfig
+from llmailbot.config import EncryptionMode, SMTPConfig
 from llmailbot.email.model import MailQueue, SimpleEmail
 from llmailbot.taskrun import SyncTask, TaskDone
 
@@ -56,8 +56,8 @@ class StdoutFakeMailSender(MailSender):
         print(str(email))
 
 
-def make_mail_sender(config: MailSendConfig) -> MailSender:
-    return SMTPSender(config.smtp)
+def make_mail_sender(config: SMTPConfig) -> MailSender:
+    return SMTPSender(config)
 
 
 class SendMailTask(SyncTask[None]):

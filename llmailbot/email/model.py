@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass
-from email.message import EmailMessage
+from email.message import EmailMessage, Message
 
 from imap_tools.message import MailMessage
 from imap_tools.utils import EmailAddress
@@ -25,6 +25,8 @@ class SimpleEmail:
     message_id: str | None = None
     in_reply_to: str | None = None
     references: str | None = None
+    parsed_message: Message | None = None
+    raw_message_data: bytes | None = None
 
     def __str__(self) -> str:
         from_str = self.addr_from.full
@@ -51,6 +53,8 @@ class SimpleEmail:
             message_id=message.obj.get("Message-Id"),
             in_reply_to=message.obj.get("In-Reply-To"),
             references=message.obj.get("References"),
+            parsed_message=message.obj,
+            raw_message_data=message._raw_message_data,  # pyright: ignore[reportAttributeAccessIssue]
         )
 
     @classmethod

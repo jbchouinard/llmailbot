@@ -1,13 +1,16 @@
+import re
 from enum import StrEnum
 from functools import lru_cache
 
 
 class CaseInsensitiveStrEnum(StrEnum):
     """
-    A string enum that is case-insensitive when comparing values.
-
-    Enum values must be lowercase.
+    A string enum that is whitespace-insensitive and case-insensitive when comparing values.
     """
+
+    @staticmethod
+    def _normalize(value: str) -> str:
+        return re.sub(r"\s+", "", value).lower()
 
     @classmethod
     @lru_cache(maxsize=128)
@@ -15,9 +18,9 @@ class CaseInsensitiveStrEnum(StrEnum):
         if not isinstance(value, str):
             return None
 
-        # Try to find a case-insensitive match
+        normalized_value = cls._normalize(value)
         for member in cls:
-            if member.value == value.lower():
+            if cls._normalize(member.value) == normalized_value:
                 return member
         return None
 
@@ -33,12 +36,12 @@ class EncryptionMode(CaseInsensitiveStrEnum):
 class QueueType(CaseInsensitiveStrEnum):
     """Identifiers for queue implementations."""
 
-    THREAD = "thread"
-    PROCESS = "process"
+    MEMORY = "memory"
+    MANAGED_MEMORY = "managed memory"
 
 
 class OnFetch(CaseInsensitiveStrEnum):
-    MARK_READ = "markread"
+    MARK_READ = "mark read"
     DELETE = "delete"
 
 
@@ -52,5 +55,11 @@ class WorkerType(CaseInsensitiveStrEnum):
 class FilterMode(CaseInsensitiveStrEnum):
     """Specify if list is an allowlist or denylist."""
 
-    ALLOWLIST = "allowlist"
-    DENYLIST = "denylist"
+    ALLOWLIST = "allow list"
+    DENYLIST = "deny list"
+
+
+class VerifyMode(CaseInsensitiveStrEnum):
+    NEVER = "never"
+    IF_PRESENT = "if present"
+    ALWAYS = "always"
