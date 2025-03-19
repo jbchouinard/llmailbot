@@ -8,9 +8,9 @@ IMAP:
   # already-processed emails may get new replies (and get deleted)
   # Possible values for OnFetch: MarkRead, Delete
   OnFetch: MarkRead
-  FetchMaxAgeDays: 0 # Ignore e-mails older than this, e.g. 0=today only, 1=since yesterday, etc.
-  FetchInterval: 300 # Run IMAP fetch at this interval (in seconds)
   FetchMax: 20 # Max number of e-mails to fetch per interval
+  FetchInterval: 300 # Run IMAP fetch at this interval (in seconds)
+  FetchMaxAgeDays: 0 # Ignore e-mails older than this, e.g. 0=today only, 1=since yesterday, etc.
   Username: mybot@example.com
   Password: my-secret-password
   Server: imap.example.com
@@ -49,6 +49,7 @@ Models:
       ModelProvider: openai
       MaxTokens: 2048
       Temperature: 0.2
+      ApiKey: foobar
     # The prompt supports the substitution of variables: name, bot_email and user_email
     SystemPrompt: |-
       Your name is {name}. You are a helpful assistant.
@@ -128,12 +129,38 @@ Security:
 # Thread or process pool used for fetching and sending e-mail
 # LLM generation uses asyncio, not the worker pool
 WorkerPool:
-  # Possible values: Thread, Process (Thread is recommended)
+  # Possible values: Thread, Process (not recommended)
   Type: Thread
   Count: 4
 #
 # Settings for the incoming and outgoing mail queues
-# For now its just in-memory queues, might add Redis later
-Queues:
-  Parameters:
-    maxsize: 100
+# In-memory queues:
+ReceiveQueue:
+  Type: Memory
+  MaxSize: 1000
+  Timeout: 5
+
+SendQueue:
+  Type: Memory
+  MaxSize: 1000
+  Timeout: 5
+# Redis queues:
+# ReceiveQueue:
+#   Type: Redis
+#   Host: localhost
+#   Port: 6379
+#   Db: 0
+#   Username: null
+#   Password: null
+#   Key: llmailbot:recvq
+#   Timeout: 5
+
+# SendQueue:
+#   Type: Redis
+#   Host: localhost
+#   Port: 6379
+#   Db: 0
+#   Username: null
+#   Password: null
+#   Key: llmailbot:sendq
+#   Timeout: 5

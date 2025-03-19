@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import re
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, List, TypeVar
+from typing import Annotated, Any, ClassVar, List, Literal, TypeVar
 
 import yaml
 from annotated_types import Ge, Le
@@ -16,7 +16,6 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     SecretStr,
-    field_serializer,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
@@ -27,7 +26,6 @@ from llmailbot.enums import (
     EncryptionMode,
     FilterMode,
     OnFetch,
-    QueueType,
     VerifyMode,
     WorkerType,
 )
@@ -58,6 +56,7 @@ def camel_to_snake_case(camel_str: str) -> str:
 class ConfigModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=snake_to_camel_case,
+        populate_by_name=True,
     )
 
 
@@ -121,10 +120,27 @@ class IMAPConfig(ConfigModel):
         return self
 
 
-class QueueConfig(ConfigModel):
-    queue_type: Annotated[Opt[QueueType], Field()] = None
-    parameters: dict[str, Any] = Field(default_factory=dict)
+class MemoryQueueSettings(ConfigModel):
+    queue_type: Annotated[Literal["Memory"], Field(alias="Type")] = "Memory"
+    max_size: Annotated[NonNegativeInt, Field()] = 0
     timeout: Annotated[PositiveInt, Field()] = 10
+
+
+class RedisConfig(ConfigModel):
+    host: Annotated[str, Field()] = "localhost"
+    port: Annotated[Port, Field()] = 6379
+    db: Annotated[NonNegativeInt, Field()] = 0
+    username: Annotated[Opt[str], Field()] = None
+    password: Annotated[Opt[str], Field()] = None
+
+
+class RedisQueueSettings(RedisConfig):
+    queue_type: Annotated[Literal["Redis"], Field(alias="Type")] = "Redis"
+    key: str = Field(...)
+    timeout: Annotated[NonNegativeInt, Field()] = 10
+
+
+type QueueSettings = MemoryQueueSettings | RedisQueueSettings
 
 
 class WorkerPoolConfig(ConfigModel):
@@ -180,17 +196,8 @@ class ChatModelConfig(ConfigModel):
     temperature: Temperature = 0.2
 
     def chat_model_config(self) -> dict[str, Any]:
-        config = self.model_extra or {}
-        config = {camel_to_snake_case(k): v for k, v in config.items()}
-        config.update(
-            {
-                "model": self.model,
-                "model_provider": self.model_provider,
-                "max_tokens": self.max_tokens,
-                "temperature": self.temperature,
-            }
-        )
-        return config
+        config = self.model_dump()
+        return {camel_to_snake_case(k): v for k, v in config.items()}
 
 
 class ModelSpec(ConfigModel):
@@ -250,9 +257,15 @@ def secrets_dirs():
     return [p for p in paths if p.exists()]
 
 
-DEFAULT_QUEUE_TYPE = {
-    WorkerType.THREAD: QueueType.MEMORY,
-    WorkerType.PROCESS: QueueType.MANAGED_MEMORY,
+DEFAULT_QUEUE_SETTINGS = {
+    "receive": {
+        WorkerType.THREAD: MemoryQueueSettings(),
+        WorkerType.PROCESS: RedisQueueSettings(key="llmailbot-incoming-mail"),
+    },
+    "send": {
+        WorkerType.THREAD: MemoryQueueSettings(),
+        WorkerType.PROCESS: RedisQueueSettings(key="llmailbot-outgoing-mail"),
+    },
 }
 
 
@@ -274,7 +287,8 @@ class LLMailBotConfig(BaseSettings):
 
     worker_pool: WorkerPoolConfig = Field(default_factory=lambda: WorkerPoolConfig())
 
-    queues: QueueConfig = Field(default_factory=lambda: QueueConfig())
+    receive_queue: Annotated[Opt[QueueSettings], Field()] = None
+    send_queue: Annotated[Opt[QueueSettings], Field()] = None
 
     @model_validator(mode="after")
     def normalize_chat_model_configurable_fields(self) -> LLMailBotConfig:
@@ -293,8 +307,10 @@ class LLMailBotConfig(BaseSettings):
 
     @model_validator(mode="after")
     def set_queue_type_none_to_default(self):
-        if self.queues.queue_type is None:
-            self.queues.queue_type = DEFAULT_QUEUE_TYPE[self.worker_pool.worker_type]
+        if self.receive_queue is None:
+            self.receive_queue = DEFAULT_QUEUE_SETTINGS["receive"][self.worker_pool.worker_type]
+        if self.send_queue is None:
+            self.send_queue = DEFAULT_QUEUE_SETTINGS["send"][self.worker_pool.worker_type]
         return self
 
     @classmethod
@@ -313,4 +329,4 @@ class LLMailBotConfig(BaseSettings):
             return init_settings, file_secret_settings
 
     def dump_yaml(self) -> str:
-        return yaml.dump(self.model_dump(mode="json", by_alias=True))
+        return yaml.dump(self.model_dump(mode="json", by_alias=True), sort_keys=False)

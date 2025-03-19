@@ -269,12 +269,12 @@ class TaskRunner(abc.ABC, Generic[T]):
 
         # asyncio.CancelledError is a subclass of BaseException, not Exception
         # so it is not caught here. it is handled by _run_until_done
-        except Exception as e:
+        except Exception as exc:
             try:
-                self.task.handle_exception(e)
-            except Exception as e:
-                self.exception = e
-                raise
+                self.task.handle_exception(exc)
+            except Exception as inner_exc:
+                self.exception = exc
+                raise inner_exc from exc
 
     async def _run_until_done(self, interval: float | None = None) -> T:
         try:

@@ -27,9 +27,11 @@ pydantic-settings = "^2.8.1"
 # Optional dependencies
 dkimpy = {version="^1.1.8", extras=["ed25519"], optional=true}
 py3dns = {version="^4.0.2", optional=true}
+redis = {extras = ["hiredis"], version = "^5.2.1", optional=true}
 
 [tool.poetry.extras]
 dkim = ["dkimpy", "py3dns"]
+redis = ["redis"]
 
 [tool.poetry.group.langchain.dependencies]
 langchain-anthropic = "^0.3.10"

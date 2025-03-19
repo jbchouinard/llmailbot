@@ -7,7 +7,7 @@ from typing import Iterable, NamedTuple
 from loguru import logger
 
 from llmailbot.config import FilterMode, SecurityConfig
-from llmailbot.email.model import SimpleEmail
+from llmailbot.email.model import IMAPMessage
 from llmailbot.enums import VerifyMode
 
 
@@ -27,7 +27,7 @@ class RuleResult(NamedTuple):
 
 class Rule(abc.ABC):
     @abc.abstractmethod
-    def check(self, email: SimpleEmail) -> RuleResult:
+    def check(self, email: IMAPMessage) -> RuleResult:
         pass
 
 
@@ -52,10 +52,8 @@ try:
         def __init__(self, strict: bool):
             self.strict = strict
 
-        def check(self, email: SimpleEmail) -> RuleResult:
-            assert email.parsed_message and email.raw_message_data
-
-            dkim_signatures = email.parsed_message.get_all("DKIM-Signature")
+        def check(self, email: IMAPMessage) -> RuleResult:
+            dkim_signatures = email.obj.get_all("DKIM-Signature")
             if not dkim_signatures:
                 if self.strict:
                     return RuleResult(Action.BLOCK, "No DKIM signature")
@@ -107,13 +105,11 @@ class VerifyMailFrom(Rule):
     def __init__(self, strict: bool = True):
         self.strict = strict
 
-    def check(self, email: SimpleEmail) -> RuleResult:
-        assert email.parsed_message
-
+    def check(self, email: IMAPMessage) -> RuleResult:
         smtp_mailfrom = None
         found_in_header = None
         for header in self.AUTHENTICATION_RESULTS_HEADERS:
-            if m := RE_SMTP_MAILFROM.search(email.parsed_message.get(header, "")):
+            if m := RE_SMTP_MAILFROM.search(email.obj.get(header, "")):
                 smtp_mailfrom = m.group("mailfrom")
                 found_in_header = header
                 break
@@ -153,9 +149,8 @@ class VerifyXMailFrom(Rule):
     def __init__(self, strict: bool = True):
         self.strict = strict
 
-    def check(self, email: SimpleEmail) -> RuleResult:
-        assert email.parsed_message
-        x_mail_from = email.parsed_message.get(self.MAIL_FROM_HEADER)
+    def check(self, email: IMAPMessage) -> RuleResult:
+        x_mail_from = email.obj.get(self.MAIL_FROM_HEADER)
         if self.strict and x_mail_from is None:
             return RuleResult(Action.BLOCK, f"{self.MAIL_FROM_HEADER} header is missing")
         if x_mail_from != email.addr_from.email:
@@ -184,9 +179,8 @@ class FilterHeader(Rule):
         self.mode = mode
         self.strict = strict
 
-    def check(self, email: SimpleEmail) -> RuleResult:
-        assert email.parsed_message
-        header_value = email.parsed_message.get(self.header)
+    def check(self, email: IMAPMessage) -> RuleResult:
+        header_value = email.obj.get(self.header)
         if header_value is None:
             if self.strict:
                 return RuleResult(Action.BLOCK, f"{self.header} header is missing")
@@ -227,7 +221,7 @@ class FilterFrom(Rule):
         in_list = domain in self.domains or addr in self.addresses
         return in_list
 
-    def check(self, email: SimpleEmail) -> RuleResult:
+    def check(self, email: IMAPMessage) -> RuleResult:
         sender = email.addr_from.email
         if sender is None:
             return RuleResult(Action.BLOCK, "From header is missing")
@@ -285,7 +279,7 @@ class RateLimitRule(Rule):
             )
         return RuleResult(Action.ALLOW, None)
 
-    def check(self, email: SimpleEmail) -> RuleResult:
+    def check(self, email: IMAPMessage) -> RuleResult:
         return self._increase_and_check()
 
 
@@ -321,12 +315,12 @@ class RateLimitPerSenderRule(Rule):
 
         return self.rate_limits[key]._increase_and_check()
 
-    def check(self, email: SimpleEmail) -> RuleResult:
+    def check(self, email: IMAPMessage) -> RuleResult:
         return self._increase_and_check(email.addr_from.email)
 
 
 class RateLimitPerDomainRule(RateLimitPerSenderRule):
-    def check(self, email: SimpleEmail) -> RuleResult:
+    def check(self, email: IMAPMessage) -> RuleResult:
         _, domain = email.addr_from.email.split("@", 1)
         return self._increase_and_check(domain)
 
@@ -340,13 +334,13 @@ class SecurityFilter:
     def __init__(self, rules: Iterable[Rule]):
         self.rules = list(rules)
 
-    def apply(self, email: SimpleEmail) -> SimpleEmail | None:
+    def apply(self, email: IMAPMessage) -> Action:
         for check in self.rules:
             result, reason = check.check(email)
             if result == Action.BLOCK:
                 logger.log("SECURITY", "BLOCKED - {} - {}", reason, email.summary())
-                return None
-        return email
+                return Action.BLOCK
+        return Action.ALLOW
 
 
 def make_security_filter(config: SecurityConfig, name_prefix: str = "") -> SecurityFilter | None:

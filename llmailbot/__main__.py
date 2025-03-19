@@ -39,6 +39,9 @@ def config():
     Print loaded configuration in YAML format.
     """
     app_config = LLMailBotConfig()  # pyright: ignore[reportCallIssue]
+    import pudb
+
+    pudb.set_trace()
     click.echo(app_config.dump_yaml())
 
 
@@ -49,7 +52,7 @@ def start():
     Start the mail bot.
     """
     app_config = LLMailBotConfig()  # pyright: ignore[reportCallIssue]
-    aiorun.run(run_app(app_config))
+    aiorun.run(run_app(app_config), stop_on_unhandled_errors=True)
 
 
 if __name__ == "__main__":

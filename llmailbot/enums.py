@@ -33,13 +33,6 @@ class EncryptionMode(CaseInsensitiveStrEnum):
     SSL_TLS = "ssl/tls"
 
 
-class QueueType(CaseInsensitiveStrEnum):
-    """Identifiers for queue implementations."""
-
-    MEMORY = "memory"
-    MANAGED_MEMORY = "managed memory"
-
-
 class OnFetch(CaseInsensitiveStrEnum):
     MARK_READ = "mark read"
     DELETE = "delete"

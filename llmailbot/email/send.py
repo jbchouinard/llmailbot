@@ -1,13 +1,15 @@
 import abc
+import asyncio
 from smtplib import SMTP, SMTP_SSL
 from ssl import SSLContext
-from typing import Iterable
+from typing import Iterable, override
 
 from loguru import logger
 
 from llmailbot.config import EncryptionMode, SMTPConfig
-from llmailbot.email.model import MailQueue, SimpleEmail
-from llmailbot.taskrun import SyncTask, TaskDone
+from llmailbot.email.model import SimpleEmailMessage
+from llmailbot.queue.core import AsyncQueue, SyncQueue, to_async_queue
+from llmailbot.taskrun import AsyncTask, TaskDone
 
 
 def connect_smtp(
@@ -34,34 +36,30 @@ class MailSender(abc.ABC):
         self.smtp_config = smtp_config
 
     @abc.abstractmethod
-    def send(self, emails: Iterable[SimpleEmail]) -> None:
+    def send(self, emails: Iterable[SimpleEmailMessage]) -> None:
         pass
 
 
 class SMTPSender(MailSender):
-    def send(self, emails: Iterable[SimpleEmail]) -> None:
+    def send(self, emails: Iterable[SimpleEmailMessage]) -> None:
         with connect_smtp(self.smtp_config) as client:
             for email in emails:
                 msg = email.to_email_message()
                 client.send_message(
                     msg=msg,
                     from_addr=email.addr_from.email,
-                    to_addrs=[a.email for a in email.addr_to],
+                    to_addrs=[a.email for a in email.addrs_to],
                 )
                 client.quit()
 
 
 class StdoutFakeMailSender(MailSender):
-    def send(self, email: SimpleEmail) -> None:
+    def send(self, email: SimpleEmailMessage) -> None:
         print(str(email))
 
 
-def make_mail_sender(config: SMTPConfig) -> MailSender:
-    return SMTPSender(config)
-
-
-class SendMailTask(SyncTask[None]):
-    def __init__(self, sender: MailSender, queue: MailQueue):
+class SendMailTask(AsyncTask[None]):
+    def __init__(self, sender: MailSender, queue: AsyncQueue[SimpleEmailMessage]):
         super().__init__(
             name=f"SendMail<{sender.smtp_config.username}@{sender.smtp_config.server}>"
         )
@@ -69,12 +67,26 @@ class SendMailTask(SyncTask[None]):
         self.sender = sender
         self.mailq = queue
 
-    def on_task_exception(self, exc: Exception):
+    @override
+    def handle_exception(self, exc: Exception):
         logger.exception("Exception in mail send task {}", self.name, exc_info=exc)
 
-    def run(self) -> TaskDone | None:
+    async def run(self) -> TaskDone | None:
         # TODO: implement batching to avoid re-connecting for every email
-        email = self.mailq.get(block=True, timeout=5)
+        email = await self.mailq.get()
         if email:
-            self.sender.send([email])
+            await asyncio.get_running_loop().run_in_executor(
+                None, lambda: self.sender.send([email])
+            )
             logger.success("Sent {}", email.summary())
+
+
+def make_mail_sender(config: SMTPConfig) -> MailSender:
+    return SMTPSender(config)
+
+
+def make_mail_send_task(
+    config: SMTPConfig, queue: AsyncQueue[SimpleEmailMessage] | SyncQueue[SimpleEmailMessage]
+):
+    sender = make_mail_sender(config)
+    return SendMailTask(sender, to_async_queue(queue))

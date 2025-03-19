@@ -2,7 +2,7 @@ from enum import Enum
 
 from loguru import logger
 
-from llmailbot.email.model import SimpleEmail
+from llmailbot.email.model import IMAPMessage
 
 try:
     import dkim
@@ -62,14 +62,13 @@ class VerificationResult(Enum):
     MISSING = 2
 
 
-def verify_dkim_signatures(email: SimpleEmail, timeout: int = 5) -> VerificationResult:
-    assert email.parsed_message
-    sigs = email.parsed_message.get_all("DKIM-Signature")
+def verify_dkim_signatures(email: IMAPMessage, timeout: int = 5) -> VerificationResult:
+    sigs = email.obj.get_all("DKIM-Signature")
     if not sigs:
         return VerificationResult.MISSING
     sig_indices = list(range(len(sigs)))
 
-    verifier = dkim.DKIM(email.raw_message_data, logger=logger, timeout=timeout)
+    verifier = dkim.DKIM(email._raw_message_data, logger=logger, timeout=timeout)
     for idx in sig_indices:
         if not verifier.verify(idx, dnsfunc=get_dns_txt_recursive):
             return VerificationResult.FAIL

@@ -1,15 +1,16 @@
 import abc
 import asyncio
 import time
-from typing import Any, Iterable
+from typing import Any, Iterable, override
 
 from imap_tools.utils import EmailAddress
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
-from llmailbot.config import ModelSpec
-from llmailbot.email.model import MailQueue, SimpleEmail
+from llmailbot.config import LLMailBotConfig, ModelSpec
+from llmailbot.email.model import IMAPMessage, IMAPRawMessage, SimpleEmailMessage
+from llmailbot.queue import AsyncQueue
 from llmailbot.taskrun import AsyncTask, TaskDone
 
 
@@ -17,11 +18,11 @@ def quoted(txt: str) -> str:
     return "> " + "\n> ".join(txt.splitlines())
 
 
-def quote_email(email: SimpleEmail) -> str:
+def quote_email(email: IMAPMessage) -> str:
     quote_title = f"{email.addr_from.name or email.addr_from.email} said"
-    if email.sent_at:
-        quote_title += f" at {email.sent_at.strftime('%Y-%m-%d %H:%M')}:"
-    return f"{quote_title}\n\n{quoted(email.body)}"
+    if email.date:
+        quote_title += f" at {email.date.strftime('%Y-%m-%d %H:%M')}:"
+    return f"{quote_title}\n\n{quoted(email.text)}"
 
 
 class MailBot(abc.ABC):
@@ -55,14 +56,14 @@ class MailBot(abc.ABC):
         logger.warning("Received email for address with no matching configuration: {}", to_addrs)
         return None, None
 
-    async def reply(self, email: SimpleEmail) -> SimpleEmail | None:
-        bot_email, spec = self._get_spec([a.email for a in email.addr_to])
+    async def reply(self, email: IMAPMessage) -> SimpleEmailMessage | None:
+        bot_email, spec = self._get_spec([a.email for a in email.addrs_to])
         if spec is None or bot_email is None:
             return None
         conversation = str(email)
         reply_body = await self.compose_reply(spec, bot_email, email.addr_from.email, conversation)
         reply_body = reply_body + "\n\n" + quote_email(email)
-        return SimpleEmail.reply(email, EmailAddress(spec.name, bot_email), reply_body)
+        return email.create_reply(EmailAddress(spec.name, bot_email), reply_body)
 
 
 class HelloMailBot(MailBot):
@@ -152,7 +153,12 @@ class LangChainMailBot(MailBot):
             stime = time.time()
             chat_model = self.chat_model.with_config(**model_config)
             response = await chat_model.ainvoke(messages)
-            logger.debug("{} response time: {}", spec.name, time.time() - stime)
+            logger.debug(
+                "{} {} response time: {}",
+                spec.name,
+                model_config["model"],
+                time.time() - stime,
+            )
             if isinstance(response.content, str):
                 return response.content
             else:
@@ -188,10 +194,9 @@ class BotReplyTask(AsyncTask[None]):
     def __init__(
         self,
         mailbot: MailBot,
-        email: SimpleEmail,
-        send_queue: MailQueue,
+        email: IMAPMessage,
+        send_queue: AsyncQueue[SimpleEmailMessage],
         retries: int = 3,
-        queue_timeout: int = 5,
     ):
         super().__init__(f"{self.__class__.__name__}<{mailbot.__class__.__name__}>")
         self.name = self._name
@@ -199,22 +204,16 @@ class BotReplyTask(AsyncTask[None]):
         self.email = email
         self.sendq = send_queue
         self.retries = retries
-        self.queue_timeout = queue_timeout
 
-    def on_task_exception(self, exc: Exception):
+    @override
+    def handle_exception(self, exc: Exception):
         logger.exception("Exception in bot runner task {}", self.name, exc_info=exc)
 
-    async def qput(self, message: SimpleEmail) -> None:
+    async def qput(self, message: SimpleEmailMessage) -> None:
         logger.trace(
-            "Putting reply in mail queue with timeout={}",
-            self.queue_timeout,
+            "Putting reply in mail queue",
         )
-        await asyncio.to_thread(
-            self.sendq.put,
-            message,
-            block=True,
-            timeout=self.queue_timeout,
-        )
+        await self.sendq.put(message)
 
     async def run(self) -> TaskDone[None] | None:
         email = self.email
@@ -250,7 +249,6 @@ class BotReplySpawnTask(AsyncTask[None]):
         recv_queue: Incoming email queue
         send_queue: Outgoing email queue
         retries: Number of retries on failure for reply task (default: 3)
-        queue_timeout: Timeout for queue operations in seconds (default: 5)
         one_at_a_time: If True, will only spawn one reply task at a time (default: False)
         instance_n: Instance number for logging (default: None)
     """
@@ -258,10 +256,9 @@ class BotReplySpawnTask(AsyncTask[None]):
     def __init__(
         self,
         mailbot: MailBot,
-        recv_queue: MailQueue,
-        send_queue: MailQueue,
+        recv_queue: AsyncQueue[IMAPRawMessage],
+        send_queue: AsyncQueue[SimpleEmailMessage],
         retries: int = 3,
-        queue_timeout: int = 5,
         one_at_a_time: bool = False,
         instance_n: int | None = None,
     ):
@@ -269,31 +266,45 @@ class BotReplySpawnTask(AsyncTask[None]):
         self.recvq = recv_queue
         self.sendq = send_queue
         self.retries = retries
-        self.queue_timeout = queue_timeout
         self.one_at_a_time = one_at_a_time
         self.name = f"{self.__class__.__name__}<{mailbot.__class__.__name__}>"
         if instance_n is not None:
             self.name += f".{instance_n}"
         super().__init__(self.name)
 
-    def on_task_exception(self, exc: Exception):
+    @override
+    def handle_exception(self, exc: Exception):
         logger.exception("Exception in bot spawner task {}", self.name, exc_info=exc)
 
     async def run(self) -> TaskDone | None:
-        # Set a timeout to avoid blocking indefinitely when trying to shutdown
-        logger.trace("Waiting for message in mail queue with timeout={}", self.queue_timeout)
-        email = await asyncio.to_thread(self.recvq.get, block=True, timeout=self.queue_timeout)
+        logger.trace("Waiting for message in mail queue")
+        email = await self.recvq.get()
         if not email:
+            logger.trace("No message in mail queue")
             return
 
         reply_task = BotReplyTask(
             mailbot=self.mailbot,
-            email=email,
+            email=email.parsed(),
             send_queue=self.sendq,
             retries=self.retries,
-            queue_timeout=self.queue_timeout,
         )
         reply_runner = reply_task.runner()
         reply_runner.start()
         if self.one_at_a_time:
             await reply_runner.wait()
+
+
+def make_bot_reply_spawn_task(
+    config: LLMailBotConfig,
+    recv_queue: AsyncQueue[IMAPRawMessage],
+    send_queue: AsyncQueue[SimpleEmailMessage],
+):
+    return BotReplySpawnTask(
+        make_mailbot(
+            config.models,
+            configurable_fields=config.chat_model_configurable_fields,
+        ),
+        recv_queue=recv_queue,
+        send_queue=send_queue,
+    )
