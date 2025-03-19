@@ -47,62 +47,39 @@ def connect_mailbox(
     return mailbox
 
 
-class IMAPFetcher(abc.ABC):
+class IMAPFetcher:
     def __init__(self, config: IMAPConfig):
         self.config = config
+        if config.on_fetch == OnFetch.MARK_READ:
+            self.only_unseen = True
+            self.mark_seen = True
+        else:
+            self.only_unseen = False
+            self.mark_seen = False
 
-    def make_query(self, only_unseen: bool = False):
+    def make_query(self):
         min_date = datetime.date.today() - datetime.timedelta(self.config.fetch_max_age_days)
-        if only_unseen:
+        if self.only_unseen:
             return AND(seen=False, date_gte=min_date)
         else:
             return AND(date_gte=min_date)
 
-    @abc.abstractmethod
-    def fetch_messages(self) -> Iterator[IMAPRawMessage]:
-        pass
-
-
-class MarkReadFetcher(IMAPFetcher):
-    """
-    Download unread messages and mark them as read.
-    """
-
     def fetch_messages(self) -> Iterator[IMAPRawMessage]:
         with connect_mailbox(self.config) as mailbox:
-            q = self.make_query(only_unseen=True)
-            logger.debug("Fetching mail with query: {}", q)
-            yield from cast(
-                Generator[IMAPRawMessage, None, None],
-                mailbox.fetch(
-                    q,
-                    bulk=True,
-                    mark_seen=True,
-                    limit=self.config.fetch_max,
-                ),
-            )
-
-
-class DeleteFetcher(IMAPFetcher):
-    """
-    Download all messages and delete them.
-    """
-
-    def fetch_messages(self) -> Iterator[IMAPRawMessage]:
-        with connect_mailbox(self.config) as mailbox:
-            q = self.make_query(only_unseen=False)
+            q = self.make_query()
             logger.debug("Fetching mail with query: {}", q)
             for message in mailbox.fetch(
                 q,
                 bulk=True,
-                mark_seen=False,
+                mark_seen=self.mark_seen,
                 limit=self.config.fetch_max,
             ):
                 if message.uid is None:
                     logger.warning("Message has no UID")
                     continue
                 yield cast(IMAPRawMessage, message)
-                mailbox.delete(message.uid)
+                if self.config.on_fetch == OnFetch.DELETE:
+                    mailbox.delete(message.uid)
 
 
 class FetchMailTask(AsyncTask[None]):
@@ -138,19 +115,10 @@ class FetchMailTask(AsyncTask[None]):
         logger.debug("Fetched {} messages", n)
 
 
-def make_mail_fetcher(config: IMAPConfig) -> IMAPFetcher:
-    if config.on_fetch == OnFetch.MARK_READ:
-        return MarkReadFetcher(config)
-    elif config.on_fetch == OnFetch.DELETE:
-        return DeleteFetcher(config)
-    else:
-        raise ValueError(f"Unknown fetch mode: {config.on_fetch}")
-
-
 def make_mail_fetch_task(
     config: IMAPConfig,
     sec_config: SecurityConfig,
     queue: SyncQueue[IMAPRawMessage] | AsyncQueue[IMAPRawMessage],
 ) -> AsyncTask[None] | SyncTask[None]:
-    fetcher = make_mail_fetcher(config)
+    fetcher = IMAPFetcher(config)
     return FetchMailTask(fetcher, to_async_queue(queue), make_security_filter(sec_config))
