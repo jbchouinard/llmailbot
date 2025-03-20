@@ -9,6 +9,7 @@ from loguru import logger
 from llmailbot.config import FilterMode, SecurityConfig
 from llmailbot.email.model import IMAPMessage
 from llmailbot.enums import VerifyMode
+from llmailbot.ratelimit import LimitResult, RateLimiter
 
 
 class Action(Enum):
@@ -234,53 +235,44 @@ class FilterFrom(Rule):
         return RuleResult(Action.ALLOW, None)
 
 
-class RateLimitRule(Rule):
+class RateLimitRule(RateLimiter, Rule):
     """
     Global rate limit check.
     """
 
     def __init__(self, duration: datetime.timedelta, limit: int, name: str = ""):
-        self.duration = duration
-        logger.trace("Rate limit duration: {}", self.duration)
-        self.limit = limit
-        self.count = 0
-        self.limit_expiry = datetime.datetime.now() + self.duration
         self.name = name
+        super().__init__(duration, limit)
 
     def _reset(self, now: datetime.datetime) -> None:
-        self.count = 0
-        self.limit_expiry = now + self.duration
+        super()._reset(now)
         logger.trace(
             "rate limit reset {} {}/{} {}",
             self.name,
-            self.count,
+            self._limit_count,
             self.limit,
-            self.limit_expiry,
+            self._limit_expiry,
         )
 
-    def _is_expired(self, now: datetime.datetime | None = None) -> bool:
-        now = now or datetime.datetime.now()
-        return now > self.limit_expiry
-
-    def _increase_and_check(self) -> RuleResult:
-        now = datetime.datetime.now()
-        if self._is_expired(now):
-            self._reset(now)
-
-        self.count += 1
+    def count(self) -> LimitResult:
+        res = super().count()
         logger.trace(
-            "rate limit {} {}/{} until {}", self.name, self.count, self.limit, self.limit_expiry
+            "rate limit {} {}/{} until {}",
+            self.name,
+            self._limit_count,
+            self.limit,
+            self._limit_expiry,
         )
-        if self.count > self.limit:
-            return RuleResult(
-                Action.BLOCK,
-                f"rate limit exceeded - {self.name} - "
-                f"{self.count}/{self.limit} until {self.limit_expiry}",
-            )
+        return res
+
+    def _check(self) -> RuleResult:
+        limit_result = self.count()
+        if limit_result == LimitResult.EXCEEDED:
+            return RuleResult(Action.BLOCK, f"rate limit {self.name} exceeded")
         return RuleResult(Action.ALLOW, None)
 
     def check(self, email: IMAPMessage) -> RuleResult:
-        return self._increase_and_check()
+        return self._check()
 
 
 class RateLimitPerSenderRule(Rule):
@@ -313,7 +305,7 @@ class RateLimitPerSenderRule(Rule):
             self._purge(now)
             self._next_purge = now + self.duration
 
-        return self.rate_limits[key]._increase_and_check()
+        return self.rate_limits[key]._check()
 
     def check(self, email: IMAPMessage) -> RuleResult:
         return self._increase_and_check(email.addr_from.email)

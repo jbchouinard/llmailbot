@@ -1,11 +1,12 @@
+# pyright: reportCallIssue=false
 import functools
 import sys
 
 import aiorun
 import click
 
-from llmailbot.config import LLMailBotConfig
-from llmailbot.core import run_app
+from llmailbot.config import FetchConfig, ReplyConfig, SendConfig
+from llmailbot.core import AppComponent, run_app
 from llmailbot.logging import LogLevel, setup_logging
 
 
@@ -29,30 +30,53 @@ def handle_cli_exceptions(func):
 def cli(config_file: str | None, log_level: str, log_file: str | None):
     setup_logging(log_file, log_level)
     if config_file:
-        LLMailBotConfig.model_config["yaml_file"] = config_file
+        FetchConfig.model_config["yaml_file"] = config_file
+        ReplyConfig.model_config["yaml_file"] = config_file
+        SendConfig.model_config["yaml_file"] = config_file
+
+
+def indent(txt, indent_str="  ") -> str:
+    return "\n".join(f"{indent_str}{line}" for line in txt.split("\n"))
 
 
 @cli.command()
+@click.argument("components", type=AppComponent, nargs=-1)
 @handle_cli_exceptions
-def config():
+def config(components: list[AppComponent]):
     """
     Print loaded configuration in YAML format.
     """
-    app_config = LLMailBotConfig()  # pyright: ignore[reportCallIssue]
-    import pudb
+    if not components:
+        components = list(AppComponent)
 
-    pudb.set_trace()
-    click.echo(app_config.dump_yaml())
+    if AppComponent.FETCH in components:
+        fetch_conf = FetchConfig()
+        click.echo("Fetch configuration:")
+        click.echo(indent(fetch_conf.dump_yaml()))
+
+    if AppComponent.REPLY in components:
+        reply_conf = ReplyConfig()
+        click.echo("Reply configuration:")
+        click.echo(indent(reply_conf.dump_yaml()))
+
+    if AppComponent.SEND in components:
+        send_conf = SendConfig()
+        click.echo("Send configuration:")
+        click.echo(indent(send_conf.dump_yaml()))
 
 
 @cli.command()
+@click.argument("components", type=AppComponent, nargs=-1)
 @handle_cli_exceptions
-def start():
+def run(components: list[AppComponent]):
     """
     Start the mail bot.
+
+    By default, runs all components (fetch, reply, send).
+
+    Specify components to run only those.
     """
-    app_config = LLMailBotConfig()  # pyright: ignore[reportCallIssue]
-    aiorun.run(run_app(app_config), stop_on_unhandled_errors=True)
+    aiorun.run(run_app(components=components), stop_on_unhandled_errors=True)
 
 
 if __name__ == "__main__":

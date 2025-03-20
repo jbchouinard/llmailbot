@@ -2,7 +2,7 @@ import abc
 import asyncio
 from smtplib import SMTP, SMTP_SSL
 from ssl import SSLContext
-from typing import Iterable, override
+from typing import Iterable
 
 from loguru import logger
 
@@ -67,10 +67,6 @@ class SendMailTask(AsyncTask[None]):
         self.sender = sender
         self.mailq = queue
 
-    @override
-    def handle_exception(self, exc: Exception):
-        logger.exception("Exception in mail send task {}", self.name, exc_info=exc)
-
     async def run(self) -> TaskDone | None:
         # TODO: implement batching to avoid re-connecting for every email
         email = await self.mailq.get()
@@ -86,7 +82,8 @@ def make_mail_sender(config: SMTPConfig) -> MailSender:
 
 
 def make_mail_send_task(
-    config: SMTPConfig, queue: AsyncQueue[SimpleEmailMessage] | SyncQueue[SimpleEmailMessage]
+    config: SMTPConfig,
+    queue: AsyncQueue[SimpleEmailMessage] | SyncQueue[SimpleEmailMessage],
 ):
     sender = make_mail_sender(config)
     return SendMailTask(sender, to_async_queue(queue))

@@ -1,50 +1,116 @@
 import asyncio
 from enum import StrEnum
-from typing import Any, Awaitable
+from typing import Awaitable, Iterable
 
 from loguru import logger
 
-from llmailbot.config import ConfigError, LLMailBotConfig
+from llmailbot.config import ConfigError, FetchConfig, QueueSettings, ReplyConfig, SendConfig
 from llmailbot.email.fetch import make_mail_fetch_task
 from llmailbot.email.model import IMAPRawMessage, SimpleEmailMessage
 from llmailbot.email.send import make_mail_send_task
 from llmailbot.mailbot import make_bot_reply_spawn_task
 from llmailbot.queue import make_queue
 from llmailbot.queue.core import AsyncQueue
-from llmailbot.taskrun import make_executor
+from llmailbot.taskrun import make_executor, run_in_background
 
 
 class AppComponent(StrEnum):
-    FETCH = "Fetch"
-    SEND = "Send"
-    REPLY = "Reply"
+    FETCH = "fetch"
+    REPLY = "reply"
+    SEND = "send"
 
 
-async def run_app(config: LLMailBotConfig):
-    if not config.models:
-        raise ConfigError("No LLM model configured")
+_mail_recv_q: AsyncQueue[IMAPRawMessage] | None = None
 
-    awaitables: list[Awaitable[Any]] = []
 
-    executor = make_executor(config.worker_pool)
-    asyncio.get_running_loop().set_default_executor(executor)
+def get_mail_recv_q(conf: QueueSettings | None) -> AsyncQueue[IMAPRawMessage]:
+    global _mail_recv_q
+    if conf is None:
+        raise ConfigError("Receive queue not configured")
+    if _mail_recv_q is None:
+        _mail_recv_q = make_queue(conf)
 
-    assert config.receive_queue
-    assert config.send_queue
-    mail_recv_q: AsyncQueue[IMAPRawMessage] = make_queue(config.receive_queue)
-    mail_send_q: AsyncQueue[SimpleEmailMessage] = make_queue(config.send_queue)
+    return _mail_recv_q
 
-    mail_fetch_task = make_mail_fetch_task(config.imap, config.security, mail_recv_q)
-    logger.debug("Starting mail fetcher: {}", mail_fetch_task._name)
-    awaitables.append(mail_fetch_task.runner().start(interval=config.imap.fetch_interval).result())
 
-    mailbot_spawn_task = make_bot_reply_spawn_task(config, mail_recv_q, mail_send_q)
-    logger.debug("Starting mailbot spawn: {}", mailbot_spawn_task._name)
-    awaitables.append(mailbot_spawn_task.runner().start().result())
+_mail_send_q: AsyncQueue[SimpleEmailMessage] | None = None
 
-    mail_send_task = make_mail_send_task(config.smtp, mail_send_q)
-    logger.debug("Starting mail sender: {}", mail_send_task._name)
-    awaitables.append(mail_send_task.runner().start().result())
+
+def get_mail_send_q(conf: QueueSettings | None) -> AsyncQueue[SimpleEmailMessage]:
+    global _mail_send_q
+    if conf is None:
+        raise ConfigError("Send queue not configured")
+    if _mail_send_q is None:
+        _mail_send_q = make_queue(conf)
+
+    return _mail_send_q
+
+
+async def run_app(components: Iterable[AppComponent] | None = None):
+    if not components:
+        components = list(AppComponent)
+    components = set(components)
+
+    tasks: list[Awaitable[None]] = []
+
+    if AppComponent.FETCH in components:
+        fetch_conf = FetchConfig()  # pyright: ignore[reportCallIssue]
+        executor = make_executor(fetch_conf.worker_pool)
+        asyncio.get_running_loop().set_default_executor(executor)
+        tasks.append(
+            run_in_background(
+                make_mail_fetch_task(
+                    fetch_conf.imap,
+                    fetch_conf.security,
+                    get_mail_recv_q(fetch_conf.receive_queue),
+                ),
+                interval=fetch_conf.imap.fetch_interval,
+                restart_delay=10,
+                max_repeated_exc=5,
+                max_repeated_exc_period=600,
+                logger=logger,
+            )
+        )
+
+    if AppComponent.REPLY in components:
+        reply_conf = ReplyConfig()  # pyright: ignore[reportCallIssue]
+        if not reply_conf.models:
+            raise ConfigError("No LLM model configured")
+
+        tasks.append(
+            run_in_background(
+                make_bot_reply_spawn_task(
+                    reply_conf,
+                    get_mail_recv_q(reply_conf.receive_queue),
+                    get_mail_send_q(reply_conf.send_queue),
+                ),
+                max_repeated_exc=3,
+                max_repeated_exc_period=10,
+                restart_delay=1,
+                logger=logger,
+            )
+        )
+
+    if AppComponent.SEND in components:
+        send_conf = SendConfig()  # pyright: ignore[reportCallIssue]
+        # Due to how the configuration system is designed, if both SEND and FETCH are run,
+        # they will have the same worker pool settings, and FETCH already created
+        # the executor
+        if AppComponent.FETCH not in components:
+            executor = make_executor(send_conf.worker_pool)
+            asyncio.get_running_loop().set_default_executor(executor)
+        tasks.append(
+            run_in_background(
+                make_mail_send_task(
+                    send_conf.smtp,
+                    get_mail_send_q(send_conf.send_queue),
+                ),
+                restart_delay=10,
+                max_repeated_exc=5,
+                max_repeated_exc_period=600,
+                logger=logger,
+            )
+        )
 
     logger.success("All tasks started")
-    await asyncio.gather(*awaitables)
+    await asyncio.gather(*tasks)

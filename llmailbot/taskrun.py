@@ -49,18 +49,18 @@ An iterative task returns TaskDone when its result is ready
 SyncTasks are run asynchronously using a ThreadPoolExecutor or ProcessPoolExecutor,
 while AsyncTasks are run directly in asyncio.
 
-Although you should probably just use asyncio.Task, this adds a couple of things on top:
+Although you should probably just use asyncio.Task, this module adds a couple of things on top:
 - TaskRunner tries to paper over the differences between sync and async units of work,
-  though when running sync tasks you always have to be cognizant of the GIL.
-- As an alternative to cancel(), TaskRunner has a stop() method, which acts as a soft-cancel.
+  though when running sync tasks you must still pay attention to thread/process-safety and the GIL
+- As an alternative to cancel(), TaskRunner provides a stop() method, which acts as a soft-cancel.
   It lets the current Task.run() call finish before cancelling. For some tasks it makes it
   easier to reason about the task's lifecycle, compared to cancel(), which can
-  raise CancelledError anywhere await is used. The downside is that if you want
-  to use stop(), you have to be aware of awaits that may wait forever.
+  raise CancelledError anywhere await is used. However stop() is not guaranteed
+  to stop a task anytime soon, if it's waiting on I/O that may never come.
 
 Beware that due to the Python GIL, running CPU-bound tasks in a ThreadPoolExecutor
 still blocks the entire interpreter. Generally ThreadPoolExecutor is appropriate
-for IO-bound tasks, while ProcessPoolExecutor is better for CPU-bound tasks,
+for IO-bound tasks, while ProcessPoolExecutor is appropriate for CPU-bound tasks,
 but has higher overhead.
 """
 
@@ -68,14 +68,17 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import datetime
 import time
 from collections import defaultdict
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Generic, Self, TypeVar
 
 from loguru import logger
+from typing_extensions import Any
 
 from llmailbot.config import WorkerPoolConfig, WorkerType
+from llmailbot.ratelimit import LimitResult, RateLimiter
 
 _last_task_id: dict[type, int] = defaultdict(lambda: 0)
 
@@ -120,6 +123,7 @@ class Task(abc.ABC, Generic[T]):
         Args:
             exc: The exception that was raised
         """
+        logger.exception("Exception in task {}", self._name, exc_info=exc)
         raise exc
 
     def on_stopped(self):
@@ -221,10 +225,10 @@ class TaskRunner(abc.ABC, Generic[T]):
     TaskRunner handles running a Task one or more times, until
     the Task returns a final result wrapped in TaskDone, or is interrupted.
 
-    There are three ways a task can get interrupted:
-    - immediately when the task is cancelled
-    - after the current invocation of Task.run returns when the task is stopped
-    - when an exception is raised and not caught by Task.handle_exception
+    These are the ways a task can get interrupted:
+    - immediately, when an exception is raised and not caught by Task.handle_exception
+    - soon, when the task is cancelled
+    - eventually, when the task is stopped
 
     See SyncTaskRunner and AsyncTaskRunner for concrete implementations
     which run SyncTask and AsyncTask respectively.
@@ -245,10 +249,6 @@ class TaskRunner(abc.ABC, Generic[T]):
     def is_finished(self) -> bool:
         return bool(self.done or self.stopped or self.cancelled or self.exception)
 
-    @property
-    def is_not_finished(self) -> bool:
-        return not self.is_finished
-
     async def wait_for_interval(self, duration: float):
         self.waiting_for_interval = True
         await asyncio.sleep(duration)
@@ -260,7 +260,7 @@ class TaskRunner(abc.ABC, Generic[T]):
 
     async def _run_once(self) -> None:
         # Should not happen, but just in case
-        assert self.is_not_finished, f"{self.name} is not ongoing"
+        assert not self.is_finished, f"{self.name} is finished"
         try:
             task_output = await self._run_task_async()
             if isinstance(task_output, TaskDone):
@@ -341,7 +341,7 @@ class TaskRunner(abc.ABC, Generic[T]):
 
         To interrupt Task.run, call TaskRunner.cancel() instead.
         """
-        assert self.run_until_done_task and self.is_not_finished, f"{self.name} is not ongoing"
+        assert self.run_until_done_task and not self.is_finished, f"{self.name} is not ongoing"
 
         logger.info("Stopping task {}", self.name)
         self.stopped = True
@@ -354,11 +354,29 @@ class TaskRunner(abc.ABC, Generic[T]):
         Cancel the task immediately, interrupting the current execution
         by raising asyncio.CancelledError.
         """
-        assert self.run_until_done_task and self.is_not_finished, f"{self.name} is not ongoing"
+        assert self.run_until_done_task and not self.is_finished, f"{self.name} is not ongoing"
 
         logger.info("Cancelling task {}", self.name)
         self.cancelled = True
         self.run_until_done_task.cancel()
+
+    async def shutdown(self, deadline: int | None = None):
+        """
+        Stop the task and wait for it to finish.
+
+        Args:
+            deadline: maximum time to wait for the task to finish, in seconds
+                after which the task will be cancelled (default: None)
+        """
+        self.stop()
+        if deadline is not None:
+            try:
+                await asyncio.wait_for(self.wait(), timeout=deadline)
+            except asyncio.TimeoutError:
+                self.cancel()
+                await self.wait()
+        else:
+            await self.wait()
 
     async def result(self) -> T:
         """
@@ -404,16 +422,14 @@ class SyncTaskRunner(TaskRunner[T]):
     See documentation for TaskRunner for more details on the TaskRunner interface.
 
     If executor is not passed in, the event loop's default executor is used,
-    which is usually a ThreadPoolExecutor.
+    which is normally a ThreadPoolExecutor.
 
     The loop's default executor can be changed by calling loop.set_default_executor.
 
     Depending on the type of executor used, the implementation of SyncTask.run
     must be thread-safe or process-safe.
 
-    Due to the GIL, CPU-bound tasks still block other tasks even when
-    run in a thread pool.
-    CPU-bound tasks are better run with ProcessPoolExecutor.
+    Due to the GIL, CPU-bound tasks block the event loop when run in a thread pool.
     """
 
     def __init__(self, task: SyncTask[T], executor: Executor | None = None):
@@ -428,6 +444,60 @@ class SyncTaskRunner(TaskRunner[T]):
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.executor, self.task.run)
+
+
+async def run_in_background(
+    task: Task[T],
+    interval: float | None = None,
+    restart_delay: int = 1,
+    max_repeated_exc: int | None = 3,
+    max_repeated_exc_period: int = 10,
+    logger: Any = None,
+) -> None:
+    """
+    Helper to run a task asynchronously in the background.
+
+    Args:
+        task: The task to run (SyncTask or AsyncTask).
+        interval: Minimum delay between task executions, in seconds (default: None)
+        restart_delay: Delay between restarts, in seconds (default: 1)
+        max_repeated_exc: Max number of the same exception within the max_repeated_exc_period
+            before giving up (default: 3).
+        max_repeated_exc_period: Max time in seconds for same-error error limit
+            before giving up (default: 10).
+        logger: Logger to use for logging (default: None)
+    """
+
+    def log(lvl: str, msg: str, *args, **kwargs):
+        if logger:
+            logger.log(lvl, msg, *args, **kwargs)
+
+    exc_limits = None
+    if max_repeated_exc:
+        exc_period_td = datetime.timedelta(seconds=max_repeated_exc_period)
+        exc_limits = defaultdict(lambda: RateLimiter(exc_period_td, max_repeated_exc))
+
+    while True:
+        try:
+            log("INFO", "Task {} is starting", task._name)
+            await task.runner().start(interval).result()
+        except Exception as exc:
+            if exc_limits is None:
+                continue
+
+            rate_limit_res = exc_limits[type(exc)].count()
+            if rate_limit_res == LimitResult.EXCEEDED:
+                log(
+                    "ERROR",
+                    "Task {} failed too many times due to {}",
+                    task._name,
+                    type(exc),
+                )
+                raise exc
+
+            await asyncio.sleep(restart_delay)
+        else:
+            log("SUCCESS", "Task {} is done; exiting", task._name)
 
 
 EXECUTOR_CLASSES = {

@@ -1,8 +1,7 @@
-import abc
 import asyncio
 import datetime
 from ssl import SSLContext
-from typing import Generator, Iterator, cast, override
+from typing import Iterator, cast, override
 
 from imap_tools.mailbox import BaseMailBox, MailBox, MailBoxTls, MailBoxUnencrypted
 from imap_tools.query import AND
@@ -93,11 +92,6 @@ class FetchMailTask(AsyncTask[None]):
         self.fetcher = fetcher
         self.mailq = queue
         self.sec_filter = sec_filter
-
-    @override
-    def handle_exception(self, exc: Exception):
-        logger.error("Exception in mail fetch task {}", self._name, exc_info=exc)
-        raise exc
 
     @override
     async def run(self) -> TaskDone | None:

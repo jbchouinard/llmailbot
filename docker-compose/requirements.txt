@@ -1,0 +1,32 @@
+# Main cloud providers
+langchain-openai
+# langchain-anthropic
+# langchain-google-genai
+# langchain-google-vertexai
+# langchain-mistralai
+# langchain-cohere
+# langchain-groq
+# langchain-azure-ai
+# langchain-azure-chat-openai
+# langchain-aws
+# langchain-fireworks
+# langchain-together
+# langchain-ai21
+# langchain-nvidia-ai-endpoints
+# langchain-xai
+
+# Self-hosted models
+# langchain-ollama
+# langchain-huggingface
+# langchain-deepseek
+# langchain-cerebras
+# langchain-sambanova
+# langchain-xinference
+
+# Other providers
+# langchain-writer
+# langchain-predictionguard
+# langchain-contextual
+# langchain-dappier
+# langchain-goodfire
+# langchain-upstage

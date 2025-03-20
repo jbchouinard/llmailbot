@@ -5,12 +5,13 @@
 LLMailBot enables chatting with LLMs via email. It connects to an email account
 using IMAP/SMTP, then automatically responds to incoming emails using LLM chat models.
 
-**If OnFetch=Delete, LLMailBot may delete all the emails in the connected account.**
+**LLMailBot may delete emails in the connected account, don't use it with a personal email account.**
 
-Any [langchain-supported provider](https://python.langchain.com/docs/integrations/providers/)
-should work. You will need to install the relevant langchain Python package and
-set them up; provider API keys must be set in environment variables.
-Such as `OPENAI_API_KEY` for OpenAI, `ANTHROPIC_API_KEY` for Anthropic, etc.
+Features:
+ - uses [langchain chat models](https://python.langchain.com/docs/integrations/chat); compatible with most mainstream LLMs
+ - basic security, including rate limiting and address filtering
+ - dynamic model configuration based on pattern-matching email addresses
+ - horizontally scaleable (using Redis queues)
 
 ## Security
 
@@ -59,63 +60,86 @@ well-behaved email clients **should** automatically include a text/plain alterna
 version when sending richly formatted emails.
 
 LLMailBot does not store emails or track conversations.
-**Usually**, when replying, email clients copy the entire email chain in
+**Usually**, when replying, email clients copy the entire chain in
 the reply. LLMailBot does the same when it replies.
 That way the context of the conversation is saved in the emails themselves.
 
 At the moment, the emails are minimally preprocessed, so the quality of responses
 depends on the ability of the model to "understand" a chain of quoted replies.
-Messages in an email reply chain are usually ordered from newest to oldest, unlike chat messages.
+Messages in the chain are usually ordered from newest to oldest, unlike chat messages.
 It seems to work OK with the models I tested, but your mileage may vary.
 
-I might try to implement splitting the quoted replies into individual
-messages. For now the entire email, including quoted replies, is given to the model
-as a single long user message. Ideally it should be split into individual messages
-and assigned the proper roles (user or AI).
+## Getting started
 
-## Installation
+### Pipx
 
-Requirements:
-- Python 3.12+
-
-### Install using pipx:
+Copy [config.example.yaml](./config.example.yaml) to config.yaml and edit it.
+See Configuration section for deta where to put config.yaml to be picked up automatically.
 
 ```bash
-# Install the package
+# Install llmailbot
 pipx install git+https://github.com/jbchouinard/llmailbot.git
 
-# Then inject the langchain packages you need
+# Then install the langchain packages you need, for example:
 pipx inject llmailbot langchain-openai langchain-anthropic langchain-ollama
+
+# Start the service
+llmailbot --config path/to/config.yaml run
 ```
 
-See the [LangChain documentation](https://python.langchain.com/docs/integrations/providers/) for a list of available providers.
+### Docker
 
-### Install using poetry for development:
+Copy and edit the example config:
+
+```bash
+copy config.example.yaml config.yaml
+```
+
+The docker image is built in two variants, `slim` and `all`.
+The `all` variant has most langchain provider packages pre-installed,
+so it should just work:
+
+```bash
+docker run -v /path/to/config.yaml:/app/config.yaml jbchouinard/llmailbot:all
+```
+
+The `slim` variant doesn't have any `langchain-*` packages installed.
+You must mount a [requirements.txt](./docker-compose/requirements.txt) file to install whatever
+provider packages you need, for example:
+
+```
+# requirements.txt
+langchain-openai
+langchain-anthropic
+```
+
+```bash
+docker run -v /path/to/config.yaml:/app/config.yaml -v /path/to/requirements.txt:/app/requirements.txt jbchouinard/llmailbot:slim
+```
+
+### Docker Compose
+
+See [docker-compose.yaml](./docker-compose.yaml) and [config.compose.yaml](./config.compose.yaml) for an example
+running the service in Compose with replication, using Redis queues.
+
+See [config.example.yaml](./config.example.yaml) for more details on all the options.
+
+### Poetry (for development)
 
 ```bash
 git clone https://github.com/jbchouinard/llmailbot.git
 cd llmailbot
 # To add more langchain providers for dev:
-poetry add --group langchain langchain-groq langchain-ollama ...
+poetry add --group langchain langchain-groq langchain-ollama
 poetry install --with langchain
-```
-
-## Usage - command line
-```bash
-python -m llmailbot --help
+poetry run llmailbot --help
 ```
 
 ## Configuration
 
 **If OnFetch=Delete in the config, LLMailBot may delete all the emails in the connected account.**
 
-Configuration options are documented in config.example.yaml.
-
-To get started quickly, copy and edit the example config:
-
-```bash
-copy config.example.yaml config.yaml
-```
+Configuration options are documented in [config.example.yaml](./config.example.yaml).
 
 ### Configuration sources (in order of precedence)
 
@@ -143,18 +167,18 @@ Configuration can be loaded from secrets files (e.g. produced by Docker Secrets)
 
 Secret files are loaded from `/run/secrets` or `/var/run/secrets/llmailbot/`. They must be in JSON format.
 
-Each top-level in the YAML config corresponds to a secret file, for example in `/run/secrets`:
+Each top-level block in the YAML config corresponds to a secret file:
 
-| Configuration Section       | Secret File Path                           |
-|-----------------------------|--------------------------------------------|
-| Models                      | `/run/secrets/models`                      |
-| SMTP                        | `/run/secrets/smtp`                        |
-| IMAP                        | `/run/secrets/imap`                        |
-| Security                    | `/run/secrets/security`                    |
-| WorkerPool                  | `/run/secrets/workerpool`                  |
-| Queues                      | `/run/secrets/queues`                      |
-| ChatModelConfigurableFields | `/run/secrets/chatmodelconfigurablefields` |
-
+| Configuration Section       | Secret File Path                      |
+|-----------------------------|---------------------------------------|
+| Models                      | `secrets/models`                      |
+| ChatModelConfigurableFields | `secrets/chatmodelconfigurablefields` |
+| SMTP                        | `secrets/smtp`                        |
+| IMAP                        | `secrets/imap`                        |
+| Security                    | `secrets/security`                    |
+| WorkerPool                  | `secrets/workerpool`                  |
+| ReceiveQueue                | `secrets/receivequeue`                |
+| SendQueue                   | `secrets/sendqueue`                   |
 
 ## Development
 

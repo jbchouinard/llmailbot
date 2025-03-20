@@ -1,0 +1,41 @@
+
+services:
+  llmailbot-fetch-1: &llmailbot
+    build: ../
+    image: jbchouinard/llmailbot:slim
+    container_name: llmailbot-fetch-1
+    command: run fetch
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./requirements.txt:/app/requirements.txt
+  
+  llmailbot-fetch-2:
+    <<: *llmailbot
+    container_name: llmailbot-fetch-2
+    command: run fetch
+
+  llmailbot-reply-1: &llmailbot-reply
+    <<: *llmailbot
+    container_name: llmailbot-reply-1
+    command: run reply
+    environment:
+      - OPENAI_API_KEY=...
+      - ANTHROPIC_API_KEY=...
+
+  llmailbot-reply-2:
+    <<: *llmailbot-reply
+    container_name: llmailbot-reply-2
+
+  llmailbot-send-1:
+    <<: *llmailbot
+    container_name: llmailbot-send-1
+    command: run send
+
+  llmailbot-send-2:
+    <<: *llmailbot
+    container_name: llmailbot-send-2
+    command: run send
+
+  redis:
+    image: redis:alpine
+    container_name: llmailbot-redis

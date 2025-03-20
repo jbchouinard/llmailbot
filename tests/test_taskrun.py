@@ -205,15 +205,15 @@ async def test_task_is_ongoing():
     runner = task.runner()
 
     # Not started yet
-    assert runner.is_not_finished
+    assert not runner.is_finished
 
     # Started but not done
     runner.start()
-    assert runner.is_not_finished
+    assert not runner.is_finished
 
     # Wait for completion
     await runner.result()
-    assert not runner.is_not_finished
+    assert runner.is_finished
 
 
 @pytest.mark.asyncio

@@ -17,3 +17,7 @@ dist/
 # Local data
 config.yaml
 data/
+
+# Code and stuff not needed for docker build
+docker-compose/
+tests/

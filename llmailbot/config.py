@@ -3,13 +3,12 @@ from __future__ import annotations
 import datetime
 import re
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, List, Literal, TypeVar
+from typing import Annotated, Any, List, Literal, TypeVar
 
 import yaml
 from annotated_types import Ge, Le
 from config_path import ConfigPath
 from pydantic import (
-    BaseModel,
     ConfigDict,
     EmailStr,
     Field,
@@ -53,20 +52,68 @@ def camel_to_snake_case(camel_str: str) -> str:
     return snake_str
 
 
-class ConfigModel(BaseModel):
-    model_config = ConfigDict(
+def yaml_config_locations() -> List[Path]:
+    unix_common = Path.home() / ".config" / "llmailbot" / "config.yaml"
+    os_convention = ConfigPath("llmailbot", "pigeonland.net", ".yaml").saveFilePath(mkdir=False)
+    return [Path("./config.yaml"), unix_common, Path(os_convention)]
+
+
+def secrets_dirs():
+    paths = [Path("/run/secrets"), Path("/var/run/llmailbot/secrets")]
+    return [p for p in paths if p.exists()]
+
+
+class RootSettings(BaseSettings):
+    model_config = SettingsConfigDict(
         alias_generator=snake_to_camel_case,
+        case_sensitive=False,
+        extra="ignore",
+        secrets_dir=secrets_dirs(),
+        yaml_file=yaml_config_locations(),
+        populate_by_name=True,
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        if cls.model_config.get("yaml_file"):
+            yaml_settings = YamlConfigSettingsSource(settings_cls)
+            return init_settings, yaml_settings, file_secret_settings
+        else:
+            return init_settings, file_secret_settings
+
+    def dump_yaml(self) -> str:
+        return yaml.dump(self.model_dump(mode="json", by_alias=True), sort_keys=False)
+
+
+class SubSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        alias_generator=snake_to_camel_case,
+        case_sensitive=False,
+        extra="ignore",
         populate_by_name=True,
     )
 
 
-class SMTPConfig(ConfigModel):
-    default_encryption_by_port: Annotated[dict[Port, EncryptionMode], ClassVar] = {
-        25: EncryptionMode.NONE,
-        587: EncryptionMode.STARTTLS,
-        465: EncryptionMode.SSL_TLS,
-    }
+DEFAULT_IMAP_ENCRYPTION = {
+    143: EncryptionMode.STARTTLS,
+    993: EncryptionMode.SSL_TLS,
+}
 
+DEFAULT_SMTP_ENCRYPTION = {
+    25: EncryptionMode.NONE,
+    587: EncryptionMode.STARTTLS,
+    465: EncryptionMode.SSL_TLS,
+}
+
+
+class SMTPConfig(SubSettings):
     username: str = Field(...)
     password: SecretStr = Field(...)
     server: str = Field(...)
@@ -77,7 +124,7 @@ class SMTPConfig(ConfigModel):
     def validate_encryption(self) -> SMTPConfig:
         if self.encryption is None:
             try:
-                self.encryption = self.default_encryption_by_port[self.port]
+                self.encryption = DEFAULT_SMTP_ENCRYPTION[self.port]
             except KeyError as e:
                 raise ConfigError(
                     f"Cannot infer encryption mode for non-standard SMTP port {self.port}. "
@@ -87,12 +134,7 @@ class SMTPConfig(ConfigModel):
         return self
 
 
-class IMAPConfig(ConfigModel):
-    default_encryption_by_port: Annotated[dict[Port, EncryptionMode], ClassVar] = {
-        143: EncryptionMode.STARTTLS,
-        993: EncryptionMode.SSL_TLS,
-    }
-
+class IMAPConfig(SubSettings):
     # Mail server settings
     username: str = Field(...)
     password: SecretStr = Field(...)
@@ -110,7 +152,7 @@ class IMAPConfig(ConfigModel):
     def validate_encryption(self) -> IMAPConfig:
         if self.encryption is None:
             try:
-                self.encryption = self.default_encryption_by_port[self.port]
+                self.encryption = DEFAULT_IMAP_ENCRYPTION[self.port]
             except KeyError as e:
                 raise ConfigError(
                     f"Cannot infer encryption mode for non-standard IMAP port {self.port}. "
@@ -120,13 +162,13 @@ class IMAPConfig(ConfigModel):
         return self
 
 
-class MemoryQueueSettings(ConfigModel):
+class MemoryQueueSettings(SubSettings):
     queue_type: Annotated[Literal["Memory"], Field(alias="Type")] = "Memory"
     max_size: Annotated[NonNegativeInt, Field()] = 0
     timeout: Annotated[PositiveInt, Field()] = 10
 
 
-class RedisConfig(ConfigModel):
+class RedisConfig(SubSettings):
     host: Annotated[str, Field()] = "localhost"
     port: Annotated[Port, Field()] = 6379
     db: Annotated[NonNegativeInt, Field()] = 0
@@ -143,12 +185,12 @@ class RedisQueueSettings(RedisConfig):
 type QueueSettings = MemoryQueueSettings | RedisQueueSettings
 
 
-class WorkerPoolConfig(ConfigModel):
+class WorkerPoolConfig(SubSettings):
     worker_type: Annotated[WorkerType, Field()] = WorkerType.THREAD
     count: Annotated[PositiveInt, Field()] = 4
 
 
-class RateLimitConfig(ConfigModel):
+class RateLimitConfig(SubSettings):
     limit: PositiveInt = Field(...)
     window: Annotated[str, Field()] = "1 hour"
 
@@ -160,14 +202,14 @@ class RateLimitConfig(ConfigModel):
         return self
 
 
-class FilterHeaderConfig(ConfigModel):
+class FilterHeaderConfig(SubSettings):
     header: str = Field(...)
     values: List[str] = Field(default_factory=list)
     mode: Annotated[FilterMode, Field()] = FilterMode.ALLOWLIST
     verify: Annotated[VerifyMode, Field()] = VerifyMode.ALWAYS
 
 
-class SecurityConfig(ConfigModel):
+class SecurityConfig(SubSettings):
     rate_limit: RateLimitConfig = Field(
         default_factory=lambda: RateLimitConfig.model_validate({"Limit": 100, "Window": "1 day"})
     )
@@ -188,7 +230,7 @@ class SecurityConfig(ConfigModel):
     verify_x_mail_from: Annotated[VerifyMode, Field()] = VerifyMode.NEVER
 
 
-class ChatModelConfig(ConfigModel):
+class ChatModelConfig(SubSettings):
     model_config = ConfigDict(extra="allow")
     model: Opt[str] = None
     model_provider: Opt[str] = None
@@ -200,7 +242,7 @@ class ChatModelConfig(ConfigModel):
         return {camel_to_snake_case(k): v for k, v in config.items()}
 
 
-class ModelSpec(ConfigModel):
+class ModelSpec(SubSettings):
     name: str = Field(...)
 
     address: Annotated[Opt[EmailStr], Field()] = None
@@ -246,52 +288,31 @@ class ModelSpec(ConfigModel):
         return model_config
 
 
-def yaml_config_locations() -> List[Path]:
-    unix_common = Path.home() / ".config" / "llmailbot" / "config.yaml"
-    os_convention = ConfigPath("llmailbot", "pigeonland.net", ".yaml").saveFilePath(mkdir=False)
-    return [Path("./config.yaml"), unix_common, Path(os_convention)]
+def default_queue() -> QueueSettings:
+    return MemoryQueueSettings()
 
 
-def secrets_dirs():
-    paths = [Path("/run/secrets"), Path("/var/run/llmailbot/secrets")]
-    return [p for p in paths if p.exists()]
-
-
-DEFAULT_QUEUE_SETTINGS = {
-    "receive": {
-        WorkerType.THREAD: MemoryQueueSettings(),
-        WorkerType.PROCESS: RedisQueueSettings(key="llmailbot-incoming-mail"),
-    },
-    "send": {
-        WorkerType.THREAD: MemoryQueueSettings(),
-        WorkerType.PROCESS: RedisQueueSettings(key="llmailbot-outgoing-mail"),
-    },
-}
-
-
-class LLMailBotConfig(BaseSettings):
-    model_config = SettingsConfigDict(
-        alias_generator=snake_to_camel_case,
-        case_sensitive=False,
-        extra="ignore",
-        secrets_dir=secrets_dirs(),
-        yaml_file=yaml_config_locations(),
-    )
-    models: List[ModelSpec] = Field(...)
-    chat_model_configurable_fields: Annotated[Opt[set[str]], Field()] = None
-
-    security: SecurityConfig = Field(default_factory=lambda: SecurityConfig())
-
+class FetchConfig(RootSettings):
     imap: IMAPConfig = Field(..., alias="IMAP")
-    smtp: SMTPConfig = Field(..., alias="SMTP")
-
+    security: SecurityConfig = Field(default_factory=lambda: SecurityConfig())
+    receive_queue: QueueSettings = Field(default_factory=default_queue)
     worker_pool: WorkerPoolConfig = Field(default_factory=lambda: WorkerPoolConfig())
 
-    receive_queue: Annotated[Opt[QueueSettings], Field()] = None
-    send_queue: Annotated[Opt[QueueSettings], Field()] = None
+
+class SendConfig(RootSettings):
+    smtp: SMTPConfig = Field(..., alias="SMTP")
+    send_queue: QueueSettings = Field(default_factory=default_queue)
+    worker_pool: WorkerPoolConfig = Field(default_factory=lambda: WorkerPoolConfig())
+
+
+class ReplyConfig(RootSettings):
+    models: List[ModelSpec] = Field(...)
+    chat_model_configurable_fields: Opt[set[str]] = Field(None)
+    receive_queue: QueueSettings = Field(default_factory=default_queue)
+    send_queue: QueueSettings = Field(default_factory=default_queue)
 
     @model_validator(mode="after")
-    def normalize_chat_model_configurable_fields(self) -> LLMailBotConfig:
+    def normalize_chat_model_configurable_fields(self) -> ReplyConfig:
         if self.chat_model_configurable_fields is not None:
             self.chat_model_configurable_fields = set(
                 [camel_to_snake_case(f) for f in self.chat_model_configurable_fields]
@@ -299,34 +320,8 @@ class LLMailBotConfig(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def validate_unique_bot_addresses(self) -> LLMailBotConfig:
+    def validate_unique_bot_addresses(self) -> ReplyConfig:
         addresses = [bot.address for bot in self.models]
         if len(addresses) != len(set(addresses)):
             raise ConfigError("Each mailbot must use a unique email address")
         return self
-
-    @model_validator(mode="after")
-    def set_queue_type_none_to_default(self):
-        if self.receive_queue is None:
-            self.receive_queue = DEFAULT_QUEUE_SETTINGS["receive"][self.worker_pool.worker_type]
-        if self.send_queue is None:
-            self.send_queue = DEFAULT_QUEUE_SETTINGS["send"][self.worker_pool.worker_type]
-        return self
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        if cls.model_config.get("yaml_file"):
-            yaml_settings = YamlConfigSettingsSource(settings_cls)
-            return init_settings, yaml_settings, file_secret_settings
-        else:
-            return init_settings, file_secret_settings
-
-    def dump_yaml(self) -> str:
-        return yaml.dump(self.model_dump(mode="json", by_alias=True), sort_keys=False)

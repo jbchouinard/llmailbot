@@ -1,14 +1,14 @@
 import abc
 import asyncio
 import time
-from typing import Any, Iterable, override
+from typing import Any, Iterable
 
 from imap_tools.utils import EmailAddress
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
-from llmailbot.config import LLMailBotConfig, ModelSpec
+from llmailbot.config import ModelSpec, ReplyConfig
 from llmailbot.email.model import IMAPMessage, IMAPRawMessage, SimpleEmailMessage
 from llmailbot.queue import AsyncQueue
 from llmailbot.taskrun import AsyncTask, TaskDone
@@ -205,10 +205,6 @@ class BotReplyTask(AsyncTask[None]):
         self.sendq = send_queue
         self.retries = retries
 
-    @override
-    def handle_exception(self, exc: Exception):
-        logger.exception("Exception in bot runner task {}", self.name, exc_info=exc)
-
     async def qput(self, message: SimpleEmailMessage) -> None:
         logger.trace(
             "Putting reply in mail queue",
@@ -272,10 +268,6 @@ class BotReplySpawnTask(AsyncTask[None]):
             self.name += f".{instance_n}"
         super().__init__(self.name)
 
-    @override
-    def handle_exception(self, exc: Exception):
-        logger.exception("Exception in bot spawner task {}", self.name, exc_info=exc)
-
     async def run(self) -> TaskDone | None:
         logger.trace("Waiting for message in mail queue")
         email = await self.recvq.get()
@@ -296,7 +288,7 @@ class BotReplySpawnTask(AsyncTask[None]):
 
 
 def make_bot_reply_spawn_task(
-    config: LLMailBotConfig,
+    config: ReplyConfig,
     recv_queue: AsyncQueue[IMAPRawMessage],
     send_queue: AsyncQueue[SimpleEmailMessage],
 ):
