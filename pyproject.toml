@@ -4,6 +4,7 @@ version = "0.3.0"
 description = "A bot for automatically replying to emails using LLMs."
 authors = ["Jerome Boisvert-Chouinard <github@jbchouinard.net>"]
 readme = "README.md"
+license = "MIT"
 packages = [{include = "llmailbot"}]
 
 [tool.poetry.requires-plugins]
