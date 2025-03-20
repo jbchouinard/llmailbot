@@ -78,7 +78,7 @@ jobs:
           labels: ${{ steps.meta-slim.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           provenance: false
 
       # Build and push all variant with additional langchain packages
@@ -95,7 +95,7 @@ jobs:
             poetry_export_args="--with langchain"
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           provenance: false
 
       # Generate attestation for slim variant
