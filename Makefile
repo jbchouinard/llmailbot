@@ -16,11 +16,17 @@ lint:
 docker-build: docker-build-slim docker-build-all
 
 docker-build-slim: Dockerfile
-	docker build -t ${DOCKER_REPO}:slim-${VERSION} -f $< .
+	DOCKER_BUILDKIT=1 docker build \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		--mount=type=cache,target=/root/.cache/pip \
+		-t ${DOCKER_REPO}:slim-${VERSION} -f $< .
 	docker tag ${DOCKER_REPO}:slim-${VERSION} ${DOCKER_REPO}:slim
 
 docker-build-all: Dockerfile.all
-	docker build -t ${DOCKER_REPO}:all-${VERSION} -f $< .
+	DOCKER_BUILDKIT=1 docker build \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		--mount=type=cache,target=/root/.cache/pip \
+		-t ${DOCKER_REPO}:all-${VERSION} -f $< .
 	docker tag ${DOCKER_REPO}:all-${VERSION} ${DOCKER_REPO}:all
 
 clean:

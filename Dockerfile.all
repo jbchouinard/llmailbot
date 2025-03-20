@@ -22,7 +22,8 @@ COPY --from=build /app/dist /app/dist
 
 RUN /app/venv/bin/pip install --upgrade pip && \
     /app/venv/bin/pip install -r /app/dist/requirements.txt && \
-    /app/venv/bin/pip install /app/dist/*.whl
+    /app/venv/bin/pip install /app/dist/*.whl && \
+    rm -rf /root/.cache/pip
 
 COPY docker_entrypoint.sh /app/docker_entrypoint.sh
 

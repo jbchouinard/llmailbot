@@ -88,6 +88,10 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
           provenance: false
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          build-contexts: |
+            pip-cache=type=cache,mode=max,target=/root/.cache/pip
 
       # Build and push all variant with additional langchain packages
       - name: Build and push all Docker image
@@ -103,6 +107,10 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
           provenance: false
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          build-contexts: |
+            pip-cache=type=cache,mode=max,target=/root/.cache/pip
 
       # Generate attestation for slim variant
       - name: Generate artifact attestation for slim

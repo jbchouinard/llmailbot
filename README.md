@@ -95,8 +95,22 @@ llmailbot --config path/to/config.yaml run
 Save and edit a copy of [config.example.yaml](./config.example.yaml).
 
 The docker image is built in two variants, `slim` and `all`.
-The `all` variant has most langchain provider packages pre-installed,
-and should work out of the box with most models:
+
+The `all` variant includes the following langchain provider packages pre-installed:
+- langchain-openai - OpenAI models (GPT-3.5, GPT-4, etc.)
+- langchain-anthropic - Anthropic models (Claude)
+- langchain-groq - Groq models (LLaMA, Mixtral)
+- langchain-mistralai - Mistral AI models
+- langchain-google-genai - Google Gemini models
+- langchain-google-vertexai - Google Vertex AI models
+- langchain-azure-ai - Azure OpenAI models
+- langchain-aws - AWS Bedrock models
+- langchain-xai - XAI models
+- langchain-ollama - Ollama models (for self-hosting)
+- langchain-huggingface - Hugging Face models
+- langchain-deepseek - DeepSeek models
+
+This variant should work out of the box with most popular models:
 
 ```bash
 docker run -v /path/to/config.yaml:/app/config.yaml jbchouinard/llmailbot:all
