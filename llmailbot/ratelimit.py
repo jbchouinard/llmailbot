@@ -7,6 +7,8 @@ class LimitResult(Enum):
     EXCEEDED = False
 
 
+# TODO: use bucket algorithm instead
+# TODO: implement RedisRateLimiter
 class RateLimiter:
     def __init__(self, duration: datetime.timedelta, limit: int):
         self.duration = duration

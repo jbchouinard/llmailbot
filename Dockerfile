@@ -9,8 +9,12 @@ COPY llmailbot /app/llmailbot
 # it works even with --dry-run
 RUN poetry install --dry-run
 RUN poetry build -f wheel
-ARG poetry_export_args=""
-RUN poetry export --without-hashes -E redis --format=requirements.txt $POETRY_EXPORT_ARGS > dist/requirements.txt
+ARG poetry_export_args=
+RUN if [ -z "${poetry_export_args}" ]; then \
+    poetry export --without-hashes -E redis --format=requirements.txt > dist/requirements.txt; \
+    else \
+    poetry export --without-hashes -E redis --format=requirements.txt ${poetry_export_args} > dist/requirements.txt; \
+    fi
 
 FROM python:3.12-slim AS runtime
 

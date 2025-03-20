@@ -1,8 +1,9 @@
 # LLMailBot
 
 [![CI](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml/badge.svg)](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml)
+[![Docker](https://img.shields.io/docker/v/jbchouinard/llmailbot?logo=docker&label=Docker%20Hub)](https://hub.docker.com/r/jbchouinard/llmailbot)
 
-LLMailBot enables chatting with LLMs via email. It connects to an email account
+LLMailBot is a service that enables chatting with LLMs via email. It connects to an email account
 using IMAP/SMTP, then automatically responds to incoming emails using LLM chat models.
 
 **LLMailBot may delete emails in the connected account, don't use it with a personal email account.**
@@ -74,7 +75,7 @@ It seems to work OK with the models I tested, but your mileage may vary.
 ### Pipx
 
 Copy [config.example.yaml](./config.example.yaml) to config.yaml and edit it.
-See Configuration section for deta where to put config.yaml to be picked up automatically.
+See Configuration section for details on where to put config.yaml to be picked up automatically.
 
 ```bash
 # Install llmailbot
@@ -92,7 +93,7 @@ llmailbot --config path/to/config.yaml run
 Copy and edit the example config:
 
 ```bash
-copy config.example.yaml config.yaml
+cp config.example.yaml config.yaml
 ```
 
 The docker image is built in two variants, `slim` and `all`.
@@ -119,7 +120,7 @@ docker run -v /path/to/config.yaml:/app/config.yaml -v /path/to/requirements.txt
 
 ### Docker Compose
 
-See [docker-compose.yaml](./docker-compose.yaml) and [config.compose.yaml](./config.compose.yaml) for an example
+See [docker-compose.yaml](./docker-compose/docker-compose.yaml), [config.yaml](./docker-compose/config.yaml), and [requirements.txt](./docker-compose/requirements.txt) for an example
 running the service in Compose with replication, using Redis queues.
 
 See [config.example.yaml](./config.example.yaml) for more details on all the options.
@@ -184,11 +185,17 @@ Each top-level block in the YAML config corresponds to a secret file:
 
 ### CI/CD
 
-This project uses GitHub Actions for continuous integration. The following checks run automatically on push and pull requests:
+This project uses GitHub Actions for continuous integration and delivery:
 
-- Linting with ruff
-- Code formatting with ruff format
-- Unit tests with pytest
+- **CI Workflow**: Runs on push to main and pull requests
+  - Linting with ruff
+  - Code formatting with ruff format
+  - Unit tests with pytest
+  - Docker build test
+
+- **Docker Publish Workflow**: Runs on push to main, tags with 'v*' pattern, and releases
+  - Builds and pushes Docker images to Docker Hub
+  - Creates two variants: `slim` (without langchain packages) and `all` (with langchain packages)
 
 ### Apply linting and formatting fixes locally:
 
@@ -204,6 +211,6 @@ poetry run pytest tests
 
 ## License
 
-TBD
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
 
 Copyright 2025 Jerome Boisvert-Chouinard

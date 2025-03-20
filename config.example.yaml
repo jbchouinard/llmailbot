@@ -1,11 +1,11 @@
 # WARNING: don't use your personal email account
-# LLMailBot may delete all your emails if you use the Delete mode
+# LLMailBot may delete your emails
 # use a dedicated email account with nothing you care about in it
 IMAP:
   # When fetching mail, the bot can either mark emails as read or delete them
   # Beware: the Delete mode doesn't care whether emails are read or not
   # So if you start in MarkRead mode then switch to Delete,
-  # already-processed emails may get new replies (and get deleted)
+  # already-processed emails will get re-processed (and deleted)
   # Possible values for OnFetch: MarkRead, Delete
   OnFetch: MarkRead
   FetchMax: 20 # Max number of e-mails to fetch per interval
@@ -43,22 +43,30 @@ SMTP:
 Models:
   - Address: mybot@example.com
     Name: MyChatBot
-    MaxInputLength: 10000
+    MaxInputLength: 10000 # max number of characters given as input to LLM\
+
+    # Parameters for the langchain chat model
+    # See: https://python.langchain.com/docs/concepts/chat_models/#standard-parameters
+    # And documentation for specific models, which may have additional parameters
+    # (They can be defined here in either snake_case or CamelCase)
     ChatModelConfig:
       Model: gpt-4.5-preview
       ModelProvider: openai
       MaxTokens: 2048
       Temperature: 0.2
-      ApiKey: foobar
+      # It's recommended to provide API keys in environment variables: OPENAI_API_KEY, etc.
+      # But it's possible to do it in config; ApiKey must also be added to ChatModelConfigurableFields below
+      # ApiKey: ...
+
     # The prompt supports the substitution of variables: name, bot_email and user_email
     SystemPrompt: |-
       Your name is {name}. You are a helpful assistant.
       A user is communicating with you using email.
       Your email address is {bot_email}. The user's email address is {user_email}. 
-      You must compose a reply. Your reply must be in text/plain format.
+      You must compose a reply in text/plain format.
       Your reply must not include email headers such as To, From and Subject.
-      Messages in an email conversation are often ordered from newest to oldest.
-      This is the email conversation you must respond to:
+      Messages in email conversations are often ordered from newest to oldest.
+      Reply to this email conversation:
 
     # Advanced feature: regex addresses
     # Instead of Address, AddressRegex can be specified. It must be a valid Python regex
@@ -72,26 +80,29 @@ Models:
     # a literal backslash is \\\\
     #
     # Named capture groups can be used to dynamically set parts of
-    # the chat model config, for example you select different models
+    # the chat model config, for example to use different models
     # based on the address:
     #
     # AddressRegex: "mybot\\+(?P<model>[.0-9a-z-]+)@example\\.com"
     #
-    # Then write to mybot+gpt-4o@example.com, mybot+claude-3-5-sonnet-latest@example.com, etc.
+    # Write to mybot+gpt-4o@example.com, mybot+claude-3-5-sonnet-latest@example.com, etc.
 
-# This is passed to langchain, it determines which model parameters
-# can be changed dynamically. Any parameter that you wish to set
-# in a ChatModelConfig block or with regex capture groups must be listed here.
+# List of model parameters which are allowed to be set at runtime
 # Model and ModelProvider are necessary for llmailbot to function
-# (Both snake_case and CamelCase works)
+# See: https://python.langchain.com/docs/concepts/chat_models/#standard-parameters
+# And documentation for specific models, which may have additional parameters
+# (They can be defined here in either snake_case or CamelCase)
 ChatModelConfigurableFields:
   - Model
   - ModelProvider
   - MaxTokens
   - Temperature
+  # - ApiKey
+  # - MaxRetries
+  # - Timeout
 
 Security:
-  # Global rate limit applied to all incoming emails
+  # Global rate limit on number of emails replied
   # Default: 100/day
   RateLimit:
     Limit: 100
@@ -132,9 +143,12 @@ WorkerPool:
   # Possible values: Thread, Process (not recommended)
   Type: Thread
   Count: 4
-#
+
 # Settings for the incoming and outgoing mail queues
-# In-memory queues:
+# In-memory queues can only be used with single process
+# For multi-process deployment, like the example docker-compose.yaml in the repo,
+# Redis queues must be used
+# IN-MEMORY QUEUES:
 ReceiveQueue:
   Type: Memory
   MaxSize: 1000
@@ -144,7 +158,8 @@ SendQueue:
   Type: Memory
   MaxSize: 1000
   Timeout: 5
-# Redis queues:
+#
+# REDIS QUEUES:
 # ReceiveQueue:
 #   Type: Redis
 #   Host: localhost
@@ -152,7 +167,7 @@ SendQueue:
 #   Db: 0
 #   Username: null
 #   Password: null
-#   Key: llmailbot:recvq
+#   Key: llmailbot:mail-incoming
 #   Timeout: 5
 
 # SendQueue:
@@ -162,5 +177,5 @@ SendQueue:
 #   Db: 0
 #   Username: null
 #   Password: null
-#   Key: llmailbot:sendq
+#   Key: llmailbot:mail-outgoing
 #   Timeout: 5
