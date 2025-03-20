@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml/badge.svg)](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml)
 
-LLMailBot enables chatting with LLMs via email. It connects to an email account
+LLMailBot is a service that enables chatting with LLMs via email. It connects to an email account
 using IMAP/SMTP, then automatically responds to incoming emails using LLM chat models.
 
 **LLMailBot may delete emails in the connected account, don't use it with a personal email account.**
