@@ -37,15 +37,15 @@ jobs:
         with:
           images: jbchouinard/llmailbot
           flavor: |
-            suffix=-slim,onlatest=true,prefix=,prefixLatest=false
+            latest=false
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,format=short
-            type=raw,value=slim,suffix=
+            type=ref,event=branch,suffix=-slim
+            type=ref,event=pr,suffix=-slim
+            type=semver,pattern={{version}},suffix=-slim
+            type=semver,pattern={{major}}.{{minor}},suffix=-slim
+            type=semver,pattern={{major}},suffix=-slim
+            type=sha,format=short,suffix=-slim
+            type=raw,value=slim
             type=raw,value=latest,enable={{is_default_branch}}
             
       # Extract metadata for all variant
@@ -55,15 +55,15 @@ jobs:
         with:
           images: jbchouinard/llmailbot
           flavor: |
-            suffix=-all,onlatest=true,prefix=,prefixLatest=false
+            latest=false
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,format=short
-            type=raw,value=all,suffix=
+            type=ref,event=branch,suffix=-all
+            type=ref,event=pr,suffix=-all
+            type=semver,pattern={{version}},suffix=-all
+            type=semver,pattern={{major}}.{{minor}},suffix=-all
+            type=semver,pattern={{major}},suffix=-all
+            type=sha,format=short,suffix=-all
+            type=raw,value=all
             type=raw,value=latest,enable={{is_default_branch}}
 
       # Build and push slim variant
