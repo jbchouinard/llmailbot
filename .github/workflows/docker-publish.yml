@@ -73,7 +73,6 @@ jobs:
             type=semver,pattern={{major}},suffix=-all
             type=sha,format=short,suffix=-all
             type=raw,value=all
-            type=raw,value=latest,enable={{is_default_branch}}
 
       # Build and push slim variant
       - name: Build and push slim Docker image
