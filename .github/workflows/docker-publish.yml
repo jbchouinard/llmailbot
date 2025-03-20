@@ -37,7 +37,7 @@ jobs:
         with:
           images: jbchouinard/llmailbot
           flavor: |
-            suffix=-slim,onlatest=true
+            suffix=-slim,onlatest=true,prefix=,prefixLatest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -45,7 +45,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha,format=short
-            type=raw,value=slim
+            type=raw,value=slim,suffix=
             type=raw,value=latest,enable={{is_default_branch}}
             
       # Extract metadata for all variant
@@ -55,7 +55,7 @@ jobs:
         with:
           images: jbchouinard/llmailbot
           flavor: |
-            suffix=-all,onlatest=true
+            suffix=-all,onlatest=true,prefix=,prefixLatest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -63,7 +63,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha,format=short
-            type=raw,value=all
+            type=raw,value=all,suffix=
             type=raw,value=latest,enable={{is_default_branch}}
 
       # Build and push slim variant
