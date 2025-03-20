@@ -15,5 +15,5 @@ dist/
 .tool-versions
 
 # Local data
-config.yaml
+./config.yaml
 data/
