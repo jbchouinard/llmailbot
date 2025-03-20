@@ -10,7 +10,7 @@ COPY llmailbot /app/llmailbot
 RUN poetry install --dry-run
 RUN poetry build -f wheel
 ARG poetry_export_args=""
-RUN poetry export --without-hashes -E redis --format=requirements.txt $POETRY_EXPORT_ARGS > dist/requirements.txt
+RUN poetry export --without-hashes -E redis --format=requirements.txt $poetry_export_args > dist/requirements.txt
 
 FROM python:3.12-slim AS runtime
 

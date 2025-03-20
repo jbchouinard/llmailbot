@@ -1,0 +1,119 @@
+name: Publish Docker Images
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  release:
+    types: [ published ]
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      # Extract metadata for slim variant
+      - name: Extract metadata for slim Docker image
+        id: meta-slim
+        uses: docker/metadata-action@v5
+        with:
+          images: jbchouinard/llmailbot
+          flavor: |
+            suffix=-slim,onlatest=true
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,format=short
+            type=raw,value=slim
+            type=raw,value=latest,enable={{is_default_branch}}
+            
+      # Extract metadata for all variant
+      - name: Extract metadata for all Docker image
+        id: meta-all
+        uses: docker/metadata-action@v5
+        with:
+          images: jbchouinard/llmailbot
+          flavor: |
+            suffix=-all,onlatest=true
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,format=short
+            type=raw,value=all
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Build and push slim variant
+      - name: Build and push slim Docker image
+        id: push-slim
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-slim.outputs.tags }}
+          labels: ${{ steps.meta-slim.outputs.labels }}
+          build-args: |
+            poetry_export_args=""
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+
+      # Build and push all variant with additional langchain packages
+      - name: Build and push all Docker image
+        id: push-all
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-all.outputs.tags }}
+          labels: ${{ steps.meta-all.outputs.labels }}
+          build-args: |
+            poetry_export_args="--with langchain"
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+
+      # Generate attestation for slim variant
+      - name: Generate artifact attestation for slim
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: index.docker.io/jbchouinard/llmailbot:slim
+          subject-digest: ${{ steps.push-slim.outputs.digest }}
+          push-to-registry: true
+
+      # Generate attestation for all variant
+      - name: Generate artifact attestation for all
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: index.docker.io/jbchouinard/llmailbot:all
+          subject-digest: ${{ steps.push-all.outputs.digest }}
+          push-to-registry: true
