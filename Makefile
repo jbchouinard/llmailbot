@@ -15,13 +15,13 @@ lint:
 
 docker-build: docker-build-slim docker-build-all
 
-docker-build-all:
-	docker build --build-arg "poetry_export_args=--with langchain" -t ${DOCKER_REPO}:all-${VERSION} .
-	docker tag ${DOCKER_REPO}:all-${VERSION} ${DOCKER_REPO}:all
-
-docker-build-slim:
-	docker build -t ${DOCKER_REPO}:slim-${VERSION} -f Dockerfile .
+docker-build-slim: Dockerfile
+	docker build -t ${DOCKER_REPO}:slim-${VERSION} -f $< .
 	docker tag ${DOCKER_REPO}:slim-${VERSION} ${DOCKER_REPO}:slim
+
+docker-build-all: Dockerfile.all
+	docker build -t ${DOCKER_REPO}:all-${VERSION} -f $< .
+	docker tag ${DOCKER_REPO}:all-${VERSION} ${DOCKER_REPO}:all
 
 clean:
 	rm -rf dist/

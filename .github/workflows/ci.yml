@@ -75,12 +75,26 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           push: false
           load: true
           tags: llmailbot:slim-test
-          # No build args needed for slim variant
           cache-from: type=gha
           cache-to: type=gha,mode=max
           
       - name: Test slim Docker image
         run: docker run --rm llmailbot:slim-test --help
+
+      - name: Build all Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.all
+          push: false
+          load: true
+          tags: llmailbot:all-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Test all Docker image
+        run: docker run --rm llmailbot:all-test --help

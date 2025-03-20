@@ -87,12 +87,10 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.all
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-all.outputs.tags }}
           labels: ${{ steps.meta-all.outputs.labels }}
-          build-args: |
-            poetry_export_args="--with langchain"
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
