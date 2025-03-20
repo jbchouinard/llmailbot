@@ -74,8 +74,10 @@ It seems to work OK with the models I tested, but your mileage may vary.
 
 ### Pipx
 
-Copy [config.example.yaml](./config.example.yaml) to config.yaml and edit it.
-See Configuration section for details on where to put config.yaml to be picked up automatically.
+Save and edit a copy of [config.example.yaml](./config.example.yaml).
+
+If you place the config in a [standard location](#yaml-configuration-file-locations),
+you can omit the `--config` option.
 
 ```bash
 # Install llmailbot
@@ -90,15 +92,11 @@ llmailbot --config path/to/config.yaml run
 
 ### Docker
 
-Copy and edit the example config:
-
-```bash
-cp config.example.yaml config.yaml
-```
+Save and edit a copy of [config.example.yaml](./config.example.yaml).
 
 The docker image is built in two variants, `slim` and `all`.
 The `all` variant has most langchain provider packages pre-installed,
-so it should just work:
+and should work out of the box with most models:
 
 ```bash
 docker run -v /path/to/config.yaml:/app/config.yaml jbchouinard/llmailbot:all
@@ -120,8 +118,8 @@ docker run -v /path/to/config.yaml:/app/config.yaml -v /path/to/requirements.txt
 
 ### Docker Compose
 
-See [docker-compose.yaml](./docker-compose/docker-compose.yaml), [config.yaml](./docker-compose/config.yaml), and [requirements.txt](./docker-compose/requirements.txt) for an example
-running the service in Compose with replication, using Redis queues.
+See [docker-compose.yaml](./docker-compose/docker-compose.yaml), [config.yaml](./docker-compose/config.yaml), and [requirements.txt](./docker-compose/requirements.txt) for a minimal example for
+running the service with replication, using Redis queues.
 
 See [config.example.yaml](./config.example.yaml) for more details on all the options.
 
