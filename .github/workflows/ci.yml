@@ -78,8 +78,7 @@ jobs:
           push: false
           load: true
           tags: llmailbot:slim-test
-          build-args: |
-            poetry_export_args=""
+          # No build args needed for slim variant
           cache-from: type=gha
           cache-to: type=gha,mode=max
           

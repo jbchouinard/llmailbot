@@ -9,10 +9,12 @@ dist/
 
 # IDE stuff
 .vscode
+.idea
 
 # Local environment
 .envrc
 .tool-versions
+.env
 
 # Local data
 config.yaml
@@ -21,3 +23,12 @@ data/
 # Code and stuff not needed for docker build
 docker-compose/
 tests/
+.github/
+Makefile
+.gitignore
+.git/
+
+# Documentation and legal files (copied separately if needed)
+LICENSE
+CHANGELOG.md
+CONTRIBUTING.md
