@@ -1,12 +1,26 @@
 # pyright: reportCallIssue=false
+import os
+import re
 import sys
 
 import aiorun
 import click
+from loguru import logger
 
 from llmailbot.config import FetchConfig, ReplyConfig, SendConfig
 from llmailbot.core import AppComponent, run_app
 from llmailbot.logging import LogLevel, setup_logging
+
+RE_API_KEY_FILE = re.compile(r"^(?P<name>[A-Z0-9a-z]+_API_KEY)_FILE$")
+
+
+def load_api_key_files():
+    for k, v in os.environ.items():
+        if m := RE_API_KEY_FILE.match(k):
+            name = m.group("name")
+            with open(v) as f:
+                os.environ[name] = f.read().strip()
+            logger.info(f"Loaded API key {name} from {v}")
 
 
 @click.group()
@@ -15,6 +29,7 @@ from llmailbot.logging import LogLevel, setup_logging
 @click.option("--log-file", default=None, help="Log file (default: stderr)")
 def cli(config_file: str | None, log_level: str, log_file: str | None):
     setup_logging(log_file, log_level)
+    load_api_key_files()
     if config_file:
         FetchConfig.model_config["yaml_file"] = config_file
         ReplyConfig.model_config["yaml_file"] = config_file
