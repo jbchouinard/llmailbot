@@ -240,13 +240,13 @@ def interactive():
     click.echo("This configures which email addresses are allowed to use the bot.\n")
 
     security_config = {}
-    security_config["AllowList"] = []
+    security_config["AllowFrom"] = []
     user_email = click.prompt("Email address allowed to use the bot", type=str)
-    security_config["AllowList"].append(user_email)
+    security_config["AllowFrom"].append(user_email)
 
     while click.confirm("Add another allowed email address?", default=False):
         email = click.prompt("Email address", type=str)
-        security_config["AllowList"].append(email)
+        security_config["AllowFrom"].append(email)
 
     # Assemble the final config
     config["IMAP"] = imap_config
