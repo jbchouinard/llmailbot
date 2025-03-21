@@ -254,6 +254,8 @@ the app searches for a YAML configuration file in the following locations (in or
 
 ### Secret Files
 
+#### Configuration
+
 Configuration can be loaded from secrets files (e.g. produced by Docker Secrets).
 
 Secret files are loaded from `/run/secrets` or `/var/run/secrets/llmailbot/`. They must be in JSON format.
@@ -269,6 +271,23 @@ Each top-level block in the YAML config corresponds to a secret file:
 | Security                    | `secrets/security`                    |
 | ReceiveQueue                | `secrets/receivequeue`                |
 | SendQueue                   | `secrets/sendqueue`                   |
+
+#### API Keys
+
+LLMailBot supports loading provider API keys from files by setting `PROVIDER_API_KEY_FILE` environment variables.
+For example, to load OpenAI API keys from a Docker secret, you could set set:
+
+```yaml
+services:
+  llmailbot:
+    ...
+    secrets:
+      - source: openai_api_key
+        target: /run/secrets/openai_api_key
+    environment:
+      ...
+      - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
+```
 
 ## Development
 
