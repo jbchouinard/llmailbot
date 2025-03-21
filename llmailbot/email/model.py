@@ -57,6 +57,7 @@ class IMAPRawMessage:
     message_data: bytes
     uid_data: bytes
     flag_data: list[bytes]
+    uid: str | None = None
 
     @classmethod
     def from_fetch(cls, fetch_data: list) -> Self:

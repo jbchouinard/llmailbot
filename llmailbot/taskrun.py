@@ -68,17 +68,12 @@ from __future__ import annotations
 
 import abc
 import asyncio
-import datetime
 import time
 from collections import defaultdict
-from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import Executor
 from typing import Generic, Self, TypeVar
 
 from loguru import logger
-from typing_extensions import Any
-
-from llmailbot.config import WorkerPoolConfig, WorkerType
-from llmailbot.ratelimit import LimitResult, RateLimiter
 
 _last_task_id: dict[type, int] = defaultdict(lambda: 0)
 
@@ -163,7 +158,7 @@ class SyncTask(Task[T]):
         """
         pass
 
-    def runner(self, executor: Executor | None = None) -> SyncTaskRunner[T]:
+    def runner(self, executor: Executor | None = None) -> SyncTaskExecutorRunner[T]:
         """
         Get runner for this task.
 
@@ -173,7 +168,7 @@ class SyncTask(Task[T]):
         Creating multiple runners for the same task instance is only
         recommended for stateless tasks.
         """
-        return SyncTaskRunner(self, executor)
+        return SyncTaskExecutorRunner(self, executor)
 
 
 class AsyncTask(Task[T]):
@@ -290,8 +285,8 @@ class TaskRunner(abc.ABC, Generic[T]):
                         )
                         await self.wait_for_interval(until_next_call_t)
 
-                await self._run_once()
                 last_call_t = time.time()
+                await self._run_once()
 
                 # Some of these should not happen, but just in case
                 if self.done is not None:
@@ -414,9 +409,9 @@ class AsyncTaskRunner(TaskRunner[T]):
         return await self.task.run()
 
 
-class SyncTaskRunner(TaskRunner[T]):
+class SyncTaskExecutorRunner(TaskRunner[T]):
     """
-    SyncTaskRunner runs a blocking SyncTask asynchronously,
+    SyncTaskExecutorRunner runs a blocking SyncTask "asynchronously",
     using a concurrent.futures Executor.
 
     See documentation for TaskRunner for more details on the TaskRunner interface.
@@ -444,67 +439,3 @@ class SyncTaskRunner(TaskRunner[T]):
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.executor, self.task.run)
-
-
-async def run_in_background(
-    task: Task[T],
-    interval: float | None = None,
-    restart_delay: int = 1,
-    max_repeated_exc: int | None = 3,
-    max_repeated_exc_period: int = 10,
-    logger: Any = None,
-) -> None:
-    """
-    Helper to run a task asynchronously in the background.
-
-    Args:
-        task: The task to run (SyncTask or AsyncTask).
-        interval: Minimum delay between task executions, in seconds (default: None)
-        restart_delay: Delay between restarts, in seconds (default: 1)
-        max_repeated_exc: Max number of the same exception within the max_repeated_exc_period
-            before giving up (default: 3).
-        max_repeated_exc_period: Max time in seconds for same-error error limit
-            before giving up (default: 10).
-        logger: Logger to use for logging (default: None)
-    """
-
-    def log(lvl: str, msg: str, *args, **kwargs):
-        if logger:
-            logger.log(lvl, msg, *args, **kwargs)
-
-    exc_limits = None
-    if max_repeated_exc:
-        exc_period_td = datetime.timedelta(seconds=max_repeated_exc_period)
-        exc_limits = defaultdict(lambda: RateLimiter(exc_period_td, max_repeated_exc))
-
-    while True:
-        try:
-            log("INFO", "Task {} is starting", task._name)
-            await task.runner().start(interval).result()
-        except Exception as exc:
-            if exc_limits is None:
-                continue
-
-            rate_limit_res = exc_limits[type(exc)].count()
-            if rate_limit_res == LimitResult.EXCEEDED:
-                log(
-                    "ERROR",
-                    "Task {} failed too many times due to {}",
-                    task._name,
-                    type(exc),
-                )
-                raise exc
-
-            await asyncio.sleep(restart_delay)
-        else:
-            log("SUCCESS", "Task {} is done; exiting", task._name)
-
-
-EXECUTOR_CLASSES = {
-    WorkerType.THREAD: ThreadPoolExecutor,
-    WorkerType.PROCESS: ProcessPoolExecutor,
-}
-
-
-def make_executor(config: WorkerPoolConfig) -> Executor:
-    return EXECUTOR_CLASSES[config.worker_type](config.count)

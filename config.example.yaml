@@ -2,15 +2,23 @@
 # LLMailBot may delete your emails
 # use a dedicated email account with nothing you care about in it
 IMAP:
-  # When fetching mail, the bot can either mark emails as read or delete them
-  # Beware: the Delete mode doesn't care whether emails are read or not
-  # So if you start in MarkRead mode then switch to Delete,
-  # already-processed emails will get re-processed (and deleted)
-  # Possible values for OnFetch: MarkRead, Delete
-  OnFetch: MarkRead
-  FetchMax: 20 # Max number of e-mails to fetch per interval
-  FetchInterval: 300 # Run IMAP fetch at this interval (in seconds)
-  FetchMaxAgeDays: 0 # Ignore e-mails older than this, e.g. 0=today only, 1=since yesterday, etc.
+  # The folder to monitor for new emails (usually INBOX)
+  WatchFolder: INBOX
+
+  # Optional folders to move emails to after processing
+  # If not specified, emails will be deleted after processing
+  # The folders will be created if they don't exist
+  RepliedFolder: LLMailBot/Processed # Move processed emails here
+  BlockedFolder: LLMailBot/Blocked # Move blocked emails here (if security filter blocks them)
+
+  # Maximum rate at which to fetch emails (per second)
+  # Lower values reduce CPU usage but increase latency
+  MaxFetchRate: 1.0
+
+  # How long to wait in IDLE mode before checking for new emails (in seconds)
+  # Lower values reduce latency but may increase server load
+  IdleTimeout: 30
+
   Username: mybot@example.com
   Password: my-secret-password
   Server: imap.example.com
@@ -137,12 +145,6 @@ Security:
   # VerifyMailFrom: Never  # try to verify that SMTP MAIL FROM matches From exactly (based on Authentication-Results)
   # VerifyXMailFrom: Never  # verify that X-Mail-From matches From exactly (X-Mail-From is a custom header used by Fastmail, maybe others?)
 #
-# Thread or process pool used for fetching and sending e-mail
-# LLM generation uses asyncio, not the worker pool
-WorkerPool:
-  # Possible values: Thread, Process (not recommended)
-  Type: Thread
-  Count: 4
 
 # Settings for the incoming and outgoing mail queues
 # In-memory queues can only be used with single process

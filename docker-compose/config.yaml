@@ -3,10 +3,11 @@ emailCredentials: &emailCredentials
   Password: my-password
 
 IMAP:
-  OnFetch: MarkRead
-  FetchMaxAgeDays: 1
-  FetchInterval: 180
-  FetchMax: 10
+  WatchFolder: INBOX
+  RepliedFolder: LLMailBot/Processed
+  BlockedFolder: LLMailBot/Blocked
+  MaxFetchRate: 1.0
+  IdleTimeout: 30
   Server: imap.example.com
   Port: 993
   <<: *emailCredentials

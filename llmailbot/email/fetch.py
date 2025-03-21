@@ -1,13 +1,12 @@
 import asyncio
-import datetime
 from ssl import SSLContext
-from typing import Iterator, cast, override
+from typing import Any, Awaitable, Callable, cast, override
 
 from imap_tools.mailbox import BaseMailBox, MailBox, MailBoxTls, MailBoxUnencrypted
 from imap_tools.query import AND
 from loguru import logger
 
-from llmailbot.config import EncryptionMode, IMAPConfig, OnFetch, SecurityConfig
+from llmailbot.config import EncryptionMode, IMAPConfig, SecurityConfig
 from llmailbot.email.model import IMAPRawMessage
 from llmailbot.queue.core import (
     AsyncQueue,
@@ -15,7 +14,7 @@ from llmailbot.queue.core import (
     to_async_queue,
 )
 from llmailbot.security import Action, SecurityFilter, make_security_filter
-from llmailbot.taskrun import AsyncTask, SyncTask, TaskDone
+from llmailbot.taskrun import AsyncTask, SyncTask
 
 MAILBOX_CLS = {
     EncryptionMode.NONE: MailBoxUnencrypted,
@@ -41,72 +40,153 @@ def connect_mailbox(
         raise ValueError("Encryption mode cannot be None")
     cls: type[BaseMailBox] = MAILBOX_CLS[config.encryption]
     mailbox: BaseMailBox = cls(**kwargs)
-    mailbox.login(config.username, config.password.get_secret_value())
+    mailbox.login(
+        config.username, config.password.get_secret_value(), initial_folder=config.watch_folder
+    )
     mailbox.email_message_class = IMAPRawMessage.from_fetch  # pyright: ignore[reportAttributeAccessIssue]
     return mailbox
 
 
-class IMAPFetcher:
-    def __init__(self, config: IMAPConfig):
-        self.config = config
-        if config.on_fetch == OnFetch.MARK_READ:
-            self.only_unseen = True
-            self.mark_seen = True
-        else:
-            self.only_unseen = False
-            self.mark_seen = False
+class MailboxWatcher(AsyncTask):
+    """
+    Long-lived watcher for an IMAP mailbox folder.
+    """
 
-    def make_query(self):
-        min_date = datetime.date.today() - datetime.timedelta(self.config.fetch_max_age_days)
-        if self.only_unseen:
-            return AND(seen=False, date_gte=min_date)
-        else:
-            return AND(date_gte=min_date)
-
-    def fetch_messages(self) -> Iterator[IMAPRawMessage]:
-        with connect_mailbox(self.config) as mailbox:
-            q = self.make_query()
-            logger.debug("Fetching mail with query: {}", q)
-            for message in mailbox.fetch(
-                q,
-                bulk=True,
-                mark_seen=self.mark_seen,
-                limit=self.config.fetch_max,
-            ):
-                if message.uid is None:
-                    logger.warning("Message has no UID")
-                    continue
-                yield cast(IMAPRawMessage, message)
-                if self.config.on_fetch == OnFetch.DELETE:
-                    mailbox.delete(message.uid)
-
-
-class FetchMailTask(AsyncTask[None]):
     def __init__(
         self,
-        fetcher: IMAPFetcher,
-        queue: AsyncQueue[IMAPRawMessage],
-        sec_filter: SecurityFilter | None = None,
+        config: IMAPConfig,
+        callback: Callable[[BaseMailBox, IMAPRawMessage], Awaitable[Any]],
+        ssl_context: SSLContext | None = None,
+        timeout: int | None = None,
     ):
-        super().__init__(name=f"FetchMail<{fetcher.config.username}@{fetcher.config.server}>")
-        self.fetcher = fetcher
-        self.mailq = queue
-        self.sec_filter = sec_filter
+        super().__init__()
+        self.config = config
+        self.ssl_context = ssl_context
+        self.timeout = timeout
+        self.folder_delim = None
+        self.move_to_folder = None
+        self.blocked_folder = None
+        self.mb = connect_mailbox(self.config, self.ssl_context, self.timeout)
+        self.setup_folders()
+        self.subscribe_only(self.config.watch_folder)
+        self.callback = callback
+        self.uids = []
+
+    async def fetch_next_uid(self) -> IMAPRawMessage | None:
+        next_uid = self.uids.pop()
+        logger.trace("Fetching message with UID {}", next_uid)
+        messages_iter = await asyncio.to_thread(self.mb.fetch, AND(uid=next_uid))
+        messages = cast(list[IMAPRawMessage], list(messages_iter))
+        if not messages:
+            logger.warning("Failed to fetch message with UID {}", next_uid)
+            return
+        if len(messages) > 1:
+            logger.warning("Multiple messages found with UID {}", next_uid)
+        message = messages[0]
+        message.uid = next_uid
+        return message
 
     @override
-    async def run(self) -> TaskDone | None:
-        n = 0
-        raw_emails = await asyncio.get_running_loop().run_in_executor(
-            None, self.fetcher.fetch_messages
-        )
-        for n, raw_email in enumerate(raw_emails, 1):  # noqa: B007
-            email = raw_email.parsed()
-            logger.info("Received {}", email.summary())
-            if self.sec_filter:
-                action = self.sec_filter.apply(email)
-                if action == Action.ALLOW:
-                    await self.mailq.put(raw_email)
-        logger.debug("Fetched {} messages", n)
+    async def run(self):
+        # Keep fetching the UIDs we already have before polling for new ones
+        if self.uids:
+            message = await self.fetch_next_uid()
+            if message is not None:
+                logger.trace("Callback processing message with UID {}", message.uid)
+                await self.callback(self.mb, message)
+            return
+
+        new_messages = self.mb.folder.status().get("MESSAGES", 0)
+        logger.trace("New messages count: {}", new_messages)
+        if new_messages > 0:
+            new_uids = await asyncio.to_thread(self.mb.uids)
+            self.uids.extend(new_uids)
+            logger.trace("Fetched {} new uids", len(self.uids))
+        else:
+            logger.trace("No new messages, IDLE for {} seconds", self.config.idle_timeout)
+            # IDLE timeout doesn't play well with asyncio
+            # TODO: use aioimaplib instead
+            await asyncio.sleep(self.config.idle_timeout)
+            # await asyncio.to_thread(self.mb.idle.wait, self.config.idle_timeout)
+            return
+
+    @override
+    def on_cancelled(self):
+        try:
+            # Safely close the mailbox connection
+            # Don't try to stop IDLE explicitly as it may cause state issues
+            logger.debug("Logging out from mailbox")
+            self.mb.logout()
+        except Exception as e:
+            logger.error("Error during mailbox cleanup: {}", str(e))
+
+    @override
+    def handle_exception(self, exc: Exception):
+        try:
+            # Safely close the mailbox connection
+            # Don't try to stop IDLE explicitly as it may cause state issues
+            logger.exception("Logging out from mailbox due to exception", exc_info=exc)
+            self.mb.logout()
+        except Exception as e:
+            logger.exception("Error during mailbox cleanup after exception", exc_info=e)
+        raise exc
+
+    def setup_folders(self):
+        if self.folder_delim is None:
+            self.folder_delim = self.mb.folder.list(self.config.watch_folder)[0].delim
+            if self.config.replied_folder:
+                self.move_to_folder = self.config.replied_folder.replace("/", self.folder_delim)
+            if self.config.blocked_folder:
+                self.blocked_folder = self.config.blocked_folder.replace("/", self.folder_delim)
+
+        if self.config.replied_folder:
+            if not self.mb.folder.list(self.config.replied_folder):
+                self.mb.folder.create(self.config.replied_folder)
+        if self.config.blocked_folder:
+            if not self.mb.folder.list(self.config.blocked_folder):
+                self.mb.folder.create(self.config.blocked_folder)
+
+    def subscribe_only(self, folder_name: str) -> bool:
+        found = False
+        for folder_info in self.mb.folder.list():
+            if folder_info.name == folder_name:
+                self.mb.folder.subscribe(folder_name, True)
+                found = True
+            else:
+                self.mb.folder.subscribe(folder_info.name, False)
+
+        return found
+
+
+def move_or_delete(mb: BaseMailBox, uid: str | list[str], folder: str | None):
+    if folder:
+        mb.move(uid, folder)
+    else:
+        mb.delete(uid)
+
+
+def filter_and_enqueue(
+    q: AsyncQueue[IMAPRawMessage],
+    secf: SecurityFilter | None,
+    replied_folder: str | None,
+    blocked_folder: str | None,
+) -> Callable[[BaseMailBox, IMAPRawMessage], Awaitable[None]]:
+    if secf is None:
+
+        async def qcallback(mb: BaseMailBox, message: IMAPRawMessage):
+            await q.put(message)
+            move_or_delete(mb, cast(str, message.uid), replied_folder)
+    else:
+
+        async def qcallback(mb: BaseMailBox, message: IMAPRawMessage):
+            res = secf.apply(message.parsed())
+            if res == Action.ALLOW:
+                await q.put(message)
+                move_or_delete(mb, cast(str, message.uid), replied_folder)
+            else:
+                move_or_delete(mb, cast(str, message.uid), blocked_folder)
+
+    return qcallback
 
 
 def make_mail_fetch_task(
@@ -114,5 +194,12 @@ def make_mail_fetch_task(
     sec_config: SecurityConfig,
     queue: SyncQueue[IMAPRawMessage] | AsyncQueue[IMAPRawMessage],
 ) -> AsyncTask[None] | SyncTask[None]:
-    fetcher = IMAPFetcher(config)
-    return FetchMailTask(fetcher, to_async_queue(queue), make_security_filter(sec_config))
+    return MailboxWatcher(
+        config,
+        callback=filter_and_enqueue(
+            to_async_queue(queue),
+            make_security_filter(sec_config),
+            config.replied_folder,
+            config.blocked_folder,
+        ),
+    )

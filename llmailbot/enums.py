@@ -33,11 +33,6 @@ class EncryptionMode(CaseInsensitiveStrEnum):
     SSL_TLS = "ssl/tls"
 
 
-class OnFetch(CaseInsensitiveStrEnum):
-    MARK_READ = "mark read"
-    DELETE = "delete"
-
-
 class WorkerType(CaseInsensitiveStrEnum):
     """Worker type for executor pools."""
 

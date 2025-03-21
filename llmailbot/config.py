@@ -13,6 +13,7 @@ from pydantic import (
     EmailStr,
     Field,
     NonNegativeInt,
+    PositiveFloat,
     PositiveInt,
     SecretStr,
     model_validator,
@@ -24,9 +25,7 @@ from llmailbot.duration import parse_duration
 from llmailbot.enums import (
     EncryptionMode,
     FilterMode,
-    OnFetch,
     VerifyMode,
-    WorkerType,
 )
 
 
@@ -142,11 +141,11 @@ class IMAPConfig(SubSettings):
     port: Port = Field(993)
     encryption: Annotated[Opt[EncryptionMode], Field()] = None
 
-    # Fetch settings
-    on_fetch: Annotated[OnFetch, Field()] = OnFetch.MARK_READ
-    fetch_interval: Annotated[PositiveInt, Field()] = 300
-    fetch_max: Annotated[PositiveInt, Field()] = 10
-    fetch_max_age_days: Annotated[NonNegativeInt, Field()] = 1
+    watch_folder: Annotated[str, Field()] = "INBOX"
+    replied_folder: Annotated[str | None, Field()] = None
+    blocked_folder: Annotated[str | None, Field()] = None
+    max_fetch_rate: Annotated[PositiveFloat, Field()] = 1.0
+    idle_timeout: Annotated[PositiveInt, Field()] = 30
 
     @model_validator(mode="after")
     def validate_encryption(self) -> IMAPConfig:
@@ -183,11 +182,6 @@ class RedisQueueSettings(RedisConfig):
 
 
 type QueueSettings = MemoryQueueSettings | RedisQueueSettings
-
-
-class WorkerPoolConfig(SubSettings):
-    worker_type: Annotated[WorkerType, Field()] = WorkerType.THREAD
-    count: Annotated[PositiveInt, Field()] = 4
 
 
 class RateLimitConfig(SubSettings):
@@ -296,13 +290,11 @@ class FetchConfig(RootSettings):
     imap: IMAPConfig = Field(..., alias="IMAP")
     security: SecurityConfig = Field(default_factory=lambda: SecurityConfig())
     receive_queue: QueueSettings = Field(default_factory=default_queue)
-    worker_pool: WorkerPoolConfig = Field(default_factory=lambda: WorkerPoolConfig())
 
 
 class SendConfig(RootSettings):
     smtp: SMTPConfig = Field(..., alias="SMTP")
     send_queue: QueueSettings = Field(default_factory=default_queue)
-    worker_pool: WorkerPoolConfig = Field(default_factory=lambda: WorkerPoolConfig())
 
 
 class ReplyConfig(RootSettings):

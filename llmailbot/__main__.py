@@ -67,8 +67,9 @@ def config(components: list[AppComponent]):
 
 @cli.command()
 @click.argument("components", type=AppComponent, nargs=-1)
+@click.option("--threads", type=int, default=2, help="Number of threads to use (default: 2)")
 @handle_cli_exceptions
-def run(components: list[AppComponent]):
+def run(components: list[AppComponent], threads: int):
     """
     Start the mail bot.
 
@@ -76,7 +77,13 @@ def run(components: list[AppComponent]):
 
     Specify components to run only those.
     """
-    aiorun.run(run_app(components=components), stop_on_unhandled_errors=True)
+
+    aiorun.run(
+        run_app(components=components),
+        stop_on_unhandled_errors=True,
+        timeout_task_shutdown=10,
+        executor_workers=threads,
+    )
 
 
 if __name__ == "__main__":

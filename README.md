@@ -8,6 +8,8 @@ LLMailBot is a service that enables chatting with Large Language Models (LLMs) v
 
 **⚠️ IMPORTANT: LLMailBot may delete emails in the connected account. Always use a dedicated email account created specifically for this purpose, never your personal email account.**
 
+Note that sending programatically generated emails to third parties may be against the terms of service of your email provider.
+
 ## Key Features
 
 - **LLM Integration**: Uses [LangChain chat models](https://python.langchain.com/docs/integrations/chat) to provide compatibility with most mainstream LLMs
@@ -220,7 +222,7 @@ llmailbot loads configuration from multiple sources:
 
 1. **Constructor Arguments**: Values passed directly to the `LLMailBotConfig` constructor
 2. **YAML File**: Loaded from one of several possible locations
-3. **Secret Files**: Loaded from `/run/secrets` and `/var/run/secrets/llmailbot/`
+3. **Secret Files**: Loaded from `/run/secrets` and `/var/run/llmailbot/secrets/`
 
 ### YAML Configuration File Locations
 
@@ -249,7 +251,6 @@ Each top-level block in the YAML config corresponds to a secret file:
 | SMTP                        | `secrets/smtp`                        |
 | IMAP                        | `secrets/imap`                        |
 | Security                    | `secrets/security`                    |
-| WorkerPool                  | `secrets/workerpool`                  |
 | ReceiveQueue                | `secrets/receivequeue`                |
 | SendQueue                   | `secrets/sendqueue`                   |
 

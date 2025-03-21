@@ -15,7 +15,6 @@ from llmailbot.config import (
     IMAPConfig,
     MemoryQueueSettings,
     ModelSpec,
-    OnFetch,
     RateLimitConfig,
     RedisQueueSettings,
     ReplyConfig,
@@ -24,8 +23,6 @@ from llmailbot.config import (
     SendConfig,
     SMTPConfig,
     VerifyMode,
-    WorkerPoolConfig,
-    WorkerType,
     camel_to_snake_case,
     snake_to_camel_case,
 )
@@ -121,20 +118,22 @@ class TestIMAPConfig:
             server="imap.example.com",
             port=993,
             encryption=EncryptionMode.SSL_TLS,
-            on_fetch=OnFetch.MARK_READ,
-            fetch_interval=300,
-            fetch_max=10,
-            fetch_max_age_days=1,
+            watch_folder="INBOX",
+            replied_folder="Processed",
+            blocked_folder="Blocked",
+            max_fetch_rate=1.0,
+            idle_timeout=30,
         )
         assert config.username == "user@example.com"
         assert config.password.get_secret_value() == "password"
         assert config.server == "imap.example.com"
         assert config.port == 993
         assert config.encryption == EncryptionMode.SSL_TLS
-        assert config.on_fetch == OnFetch.MARK_READ
-        assert config.fetch_interval == 300
-        assert config.fetch_max == 10
-        assert config.fetch_max_age_days == 1
+        assert config.watch_folder == "INBOX"
+        assert config.replied_folder == "Processed"
+        assert config.blocked_folder == "Blocked"
+        assert config.max_fetch_rate == 1.0
+        assert config.idle_timeout == 30
 
     def test_default_encryption_inference(self):
         # Test standard ports with default encryption
@@ -208,20 +207,6 @@ class TestQueueSettings:
         assert queue.username == "redis-user"
         assert queue.password == "redis-password"
         assert queue.timeout == 30
-
-
-class TestWorkerPoolConfig:
-    def test_worker_pool_defaults(self):
-        # Test with defaults
-        pool = WorkerPoolConfig()
-        assert pool.worker_type == WorkerType.THREAD
-        assert pool.count == 4
-
-    def test_worker_pool_custom(self):
-        # Test with custom values
-        pool = WorkerPoolConfig(worker_type=WorkerType.PROCESS, count=8)
-        assert pool.worker_type == WorkerType.PROCESS
-        assert pool.count == 8
 
 
 class TestRateLimitConfig:
@@ -523,7 +508,6 @@ class TestFetchConfig:
             ),
             security=SecurityConfig(),
             receive_queue=MemoryQueueSettings(max_size=100),
-            worker_pool=WorkerPoolConfig(count=2),
         )
         assert config.imap.username == "user@example.com"
         assert config.imap.password.get_secret_value() == "password"
@@ -532,7 +516,6 @@ class TestFetchConfig:
         assert config.imap.encryption == EncryptionMode.SSL_TLS  # Inferred
         assert config.receive_queue.queue_type == "Memory"
         assert config.receive_queue.max_size == 100
-        assert config.worker_pool.count == 2
 
 
 # Test-specific subclass of SendConfig
@@ -552,7 +535,6 @@ class TestSendConfig:
                 server="smtp.example.com",
             ),
             send_queue=MemoryQueueSettings(max_size=100),
-            worker_pool=WorkerPoolConfig(count=2),
         )
         assert config.smtp.username == "user@example.com"
         assert config.smtp.password.get_secret_value() == "password"
@@ -561,4 +543,3 @@ class TestSendConfig:
         assert config.smtp.encryption == EncryptionMode.SSL_TLS  # Inferred
         assert config.send_queue.queue_type == "Memory"
         assert config.send_queue.max_size == 100
-        assert config.worker_pool.count == 2
