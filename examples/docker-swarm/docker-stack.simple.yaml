@@ -1,0 +1,52 @@
+# Example Compose stack file Docker Swarm / Portainer
+# Single container with in-memory queues
+# The named secrets and configs must be created in the swarm:
+#  Configs - corresponding file:
+#    - llmailbot_config_yaml - config.yaml
+#  Secrets - corresponding file:
+#    - llmailbot_email_imap - email_imap.json
+#    - llmailbot_email_smtp - email_smtp.json
+#    - llmailbot_openai_api_key
+#    - llmailbot_anthropic_api_key
+#
+version: "3.8"
+services:
+  runall:
+    image: jbchouinard/llmailbot:all
+    command: run
+    configs:
+      - source: config_yaml
+        target: /app/config.yaml
+        mode: 0440
+    secrets:
+      - source: email_imap
+        target: /run/secrets/imap
+      - source: email_smtp
+        target: /run/secrets/smtp
+      - source: openai_api_key
+        target: /run/secrets/openai_api_key
+      - source: anthropic_api_key
+        target: /run/secrets/anthropic_api_key
+    environment:
+      - LLMAILBOT_LOG_LEVEL=${LLMAILBOT_LOG_LEVEL:-INFO}
+      - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key
+
+configs:
+  config_yaml:
+    external: true
+    name: llmailbot_config_yaml
+
+secrets:
+  email_imap:
+    external: true
+    name: llmailbot_email_imap
+  email_smtp:
+    external: true
+    name: llmailbot_email_smtp
+  openai_api_key:
+    external: true
+    name: llmailbot_openai_api_key
+  anthropic_api_key:
+    external: true
+    name: llmailbot_anthropic_api_key

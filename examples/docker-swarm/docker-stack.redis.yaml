@@ -1,4 +1,5 @@
 # Example Compose stack file for Docker Swarm / Portainer
+# Multi-containers with Redis queues
 # The named secrets and configs must be created in the swarm:
 #  Configs - corresponding file:
 #    - llmailbot_config_yaml - config.yaml
