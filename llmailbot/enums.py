@@ -51,3 +51,8 @@ class VerifyMode(CaseInsensitiveStrEnum):
     NEVER = "never"
     IF_PRESENT = "if present"
     ALWAYS = "always"
+
+
+class QueueType(CaseInsensitiveStrEnum):
+    MEMORY = "memory"
+    REDIS = "redis"

@@ -13,8 +13,8 @@ from llmailbot.config import (
     FilterHeaderConfig,
     FilterMode,
     IMAPConfig,
-    MemoryQueueSettings,
     ModelSpec,
+    QueueSettings,
     RateLimitConfig,
     RedisQueueSettings,
     ReplyConfig,
@@ -26,7 +26,7 @@ from llmailbot.config import (
     camel_to_snake_case,
     snake_to_camel_case,
 )
-from llmailbot.enums import EncryptionMode
+from llmailbot.enums import EncryptionMode, QueueType
 
 
 # Create test-specific base classes that override settings_customise_sources
@@ -166,14 +166,14 @@ class TestIMAPConfig:
 class TestQueueSettings:
     def test_memory_queue_settings(self):
         # Test memory queue with defaults
-        queue = MemoryQueueSettings()
-        assert queue.queue_type == "Memory"
+        queue = QueueSettings()
+        assert queue.queue_type == QueueType.MEMORY
         assert queue.max_size == 0
         assert queue.timeout == 10
 
         # Test memory queue with custom values
-        queue = MemoryQueueSettings(max_size=100, timeout=30)
-        assert queue.queue_type == "Memory"
+        queue = QueueSettings(max_size=100, timeout=30)
+        assert queue.queue_type == QueueType.MEMORY
         assert queue.max_size == 100
         assert queue.timeout == 30
 
@@ -507,14 +507,14 @@ class TestFetchConfig:
                 server="imap.example.com",
             ),
             security=SecurityConfig(),
-            receive_queue=MemoryQueueSettings(max_size=100),
+            receive_queue=QueueSettings(max_size=100),
         )
         assert config.imap.username == "user@example.com"
         assert config.imap.password.get_secret_value() == "password"
         assert config.imap.server == "imap.example.com"
         assert config.imap.port == 993  # Default
         assert config.imap.encryption == EncryptionMode.SSL_TLS  # Inferred
-        assert config.receive_queue.queue_type == "Memory"
+        assert config.receive_queue.queue_type == QueueType.MEMORY
         assert config.receive_queue.max_size == 100
 
 
@@ -534,12 +534,12 @@ class TestSendConfig:
                 password=SecretStr("password"),
                 server="smtp.example.com",
             ),
-            send_queue=MemoryQueueSettings(max_size=100),
+            send_queue=QueueSettings(max_size=100),
         )
         assert config.smtp.username == "user@example.com"
         assert config.smtp.password.get_secret_value() == "password"
         assert config.smtp.server == "smtp.example.com"
         assert config.smtp.port == 465  # Default
         assert config.smtp.encryption == EncryptionMode.SSL_TLS  # Inferred
-        assert config.send_queue.queue_type == "Memory"
+        assert config.send_queue.queue_type == QueueType.MEMORY
         assert config.send_queue.max_size == 100

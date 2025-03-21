@@ -1,5 +1,4 @@
 # pyright: reportCallIssue=false
-import functools
 import sys
 
 import aiorun
@@ -10,23 +9,10 @@ from llmailbot.core import AppComponent, run_app
 from llmailbot.logging import LogLevel, setup_logging
 
 
-def handle_cli_exceptions(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            click.echo(f"Error: {str(e)}", err=True)
-            sys.exit(1)
-
-    return wrapper
-
-
 @click.group()
 @click.option("--config", "config_file", default=None, help="Configuration file (default: None)")
 @click.option("--log-level", type=str, default=LogLevel.INFO, help="Log level (default: INFO)")
 @click.option("--log-file", default=None, help="Log file (default: stderr)")
-@handle_cli_exceptions
 def cli(config_file: str | None, log_level: str, log_file: str | None):
     setup_logging(log_file, log_level)
     if config_file:
@@ -46,7 +32,6 @@ def config():
 
 @config.command()
 @click.argument("components", type=AppComponent, nargs=-1)
-@handle_cli_exceptions
 def show(components: list[AppComponent]):
     """
     Print loaded configuration in YAML format.
@@ -71,7 +56,6 @@ def show(components: list[AppComponent]):
 
 
 @config.command()
-@handle_cli_exceptions
 def example():
     """
     Write example configuration to ./config.yaml.
@@ -87,7 +71,7 @@ def example():
 
     # Get the example config from package resources
     example_config = (
-        importlib.resources.files("llmailbot").joinpath("../config.example.yaml").read_text()
+        importlib.resources.files("llmailbot").joinpath("../examples/config.yaml").read_text()
     )
 
     # Write to config.yaml
@@ -98,7 +82,6 @@ def example():
 
 
 @config.command()
-@handle_cli_exceptions
 def interactive():
     """
     Interactively generate a config based on a series of prompts
@@ -274,7 +257,6 @@ def interactive():
 @cli.command()
 @click.argument("components", type=AppComponent, nargs=-1)
 @click.option("--threads", type=int, default=2, help="Number of threads to use (default: 2)")
-@handle_cli_exceptions
 def run(components: list[AppComponent], threads: int):
     """
     Start the mail bot.
@@ -292,5 +274,13 @@ def run(components: list[AppComponent], threads: int):
     )
 
 
+def main():
+    try:
+        cli(auto_envvar_prefix="LLMAILBOT")
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    cli()
+    main()

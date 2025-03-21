@@ -1,0 +1,127 @@
+# Example Compose stack file for Docker Swarm / Portainer
+# The named secrets and configs must be created in the swarm:
+#  Configs - corresponding file:
+#    - llmailbot_config_yaml - config.yaml
+#    - llmailbot_langchain_requirements_txt - requirements.txt
+#    - llmailbot_redis_conf - redis.conf
+#  Secrets - corresponding file:
+#    - llmailbot_email_imap - email_imap.json
+#    - llmailbot_email_smtp - email_smtp.json
+#    - llmailbot_receive_queue - receive_queue.json
+#    - llmailbot_send_queue - send_queue.json
+#    - llmailbot_redis_password
+#    - llmailbot_openai_api_key
+#    - llmailbot_anthropic_api_key
+#
+version: "3.8"
+
+services:
+  fetch:
+    image: jbchouinard/llmailbot:slim
+    command: run fetch
+    configs:
+      - source: config_yaml
+        target: /app/config.yaml
+        mode: 0440
+    secrets:
+      - source: email_imap
+        target: /run/secrets/imap
+      - source: receive_queue
+        target: /run/secrets/receivequeue
+      - source: send_queue
+        target: /run/secrets/sendqueue
+    environment:
+      - LLMAILBOT_LOG_LEVEL=${LLMAILBOT_LOG_LEVEL:-INFO}
+    depends_on:
+      - redis
+
+  reply:
+    image: jbchouinard/llmailbot:slim
+    command: run reply
+    configs:
+      - source: config_yaml
+        target: /app/config.yaml
+        mode: 0440
+      - source: requirements_txt
+        target: /app/requirements.txt
+        mode: 0440
+    secrets:
+      - source: openai_api_key
+        target: /run/secrets/openai_api_key
+      - source: anthropic_api_key
+        target: /run/secrets/anthropic_api_key
+      - source: receive_queue
+        target: /run/secrets/receivequeue
+      - source: send_queue
+        target: /run/secrets/sendqueue
+    environment:
+      - LLMAILBOT_LOG_LEVEL=${LLMAILBOT_LOG_LEVEL:-INFO}
+      - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key
+    depends_on:
+      - redis
+
+  send:
+    image: jbchouinard/llmailbot:slim
+    command: run send
+    secrets:
+      - source: email_smtp
+        target: /run/secrets/smtp
+      - source: receive_queue
+        target: /run/secrets/receivequeue
+      - source: send_queue
+        target: /run/secrets/sendqueue
+    environment:
+      - LLMAILBOT_LOG_LEVEL=${LLMAILBOT_LOG_LEVEL:-INFO}
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    command: redis-server /etc/redis/redis.conf
+    configs:
+      - source: redis_conf
+        target: /etc/redis/redis.conf
+        mode: 0440
+    secrets:
+      - source: redis_password
+        target: /run/secrets/redis_password
+    volumes:
+      - redis-data:/data
+
+configs:
+  config_yaml:
+    external: true
+    name: llmailbot_config_yaml
+  requirements_txt:
+    external: true
+    name: llmailbot_langchain_requirements_txt
+  redis_conf:
+    external: true
+    name: llmailbot_redis_conf
+
+secrets:
+  email_imap:
+    external: true
+    name: llmailbot_email_imap
+  email_smtp:
+    external: true
+    name: llmailbot_email_smtp
+  receive_queue:
+    external: true
+    name: llmailbot_receive_queue
+  send_queue:
+    external: true
+    name: llmailbot_send_queue
+  openai_api_key:
+    external: true
+    name: llmailbot_openai_api_key
+  anthropic_api_key:
+    external: true
+    name: llmailbot_anthropic_api_key
+  redis_password:
+    external: true
+    name: llmailbot_redis_password
+
+volumes:
+  redis-data:

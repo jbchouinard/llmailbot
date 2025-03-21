@@ -1,21 +1,9 @@
-emailCredentials: &emailCredentials
-  Username: mybot@example.com
-  Password: my-password
-
 IMAP:
   WatchFolder: INBOX
   RepliedFolder: LLMailBot/Processed
   BlockedFolder: LLMailBot/Blocked
   MaxFetchRate: 1.0
   IdleTimeout: 30
-  Server: imap.example.com
-  Port: 993
-  <<: *emailCredentials
-
-SMTP:
-  Server: smtp.example.com
-  Port: 465
-  <<: *emailCredentials
 
 Security:
   AllowFrom:
@@ -37,8 +25,8 @@ Models:
       Messages in email conversations are often ordered from newest to oldest.
       Reply to this email conversation:
     ChatModelConfig:
-      Model: gpt-3.5-turbo
       ModelProvider: openai
+      Model: gpt-3.5-turbo
       Temperature: 0.2
       MaxTokens: 2048
 
@@ -47,19 +35,3 @@ ChatModelConfigurableFields:
   - ModelProvider
   - Temperature
   - MaxTokens
-
-redisConfig: &redisConfig
-  Host: redis
-  Port: 6379
-  Db: 0
-  Timeout: 5
-
-ReceiveQueue:
-  Type: Redis
-  <<: *redisConfig
-  Key: "llmailbot:incoming-mail"
-
-SendQueue:
-  Type: Redis
-  <<: *redisConfig
-  Key: "llmailbot:outgoing-mail"

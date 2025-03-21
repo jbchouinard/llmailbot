@@ -25,6 +25,7 @@ from llmailbot.duration import parse_duration
 from llmailbot.enums import (
     EncryptionMode,
     FilterMode,
+    QueueType,
     VerifyMode,
 )
 
@@ -161,12 +162,6 @@ class IMAPConfig(SubSettings):
         return self
 
 
-class MemoryQueueSettings(SubSettings):
-    queue_type: Annotated[Literal["Memory"], Field(alias="Type")] = "Memory"
-    max_size: Annotated[NonNegativeInt, Field()] = 0
-    timeout: Annotated[PositiveInt, Field()] = 10
-
-
 class RedisConfig(SubSettings):
     host: Annotated[str, Field()] = "localhost"
     port: Annotated[Port, Field()] = 6379
@@ -181,7 +176,17 @@ class RedisQueueSettings(RedisConfig):
     timeout: Annotated[NonNegativeInt, Field()] = 10
 
 
-type QueueSettings = MemoryQueueSettings | RedisQueueSettings
+class QueueSettings(RedisConfig):
+    queue_type: Annotated[QueueType, Field(alias="Type")] = QueueType.MEMORY
+    key: Annotated[Opt[str], Field()] = None
+    timeout: Annotated[NonNegativeInt, Field()] = 10
+    max_size: Annotated[NonNegativeInt, Field()] = 0
+
+    @model_validator(mode="after")
+    def validate_key_if_redis(self) -> QueueSettings:
+        if self.queue_type == QueueType.REDIS and self.key is None:
+            raise ConfigError("Redis queue requires a key.")
+        return self
 
 
 class RateLimitConfig(SubSettings):
@@ -294,7 +299,7 @@ class ModelSpec(SubSettings):
 
 
 def default_queue() -> QueueSettings:
-    return MemoryQueueSettings()
+    return QueueSettings()
 
 
 class FetchConfig(RootSettings):
