@@ -142,8 +142,8 @@ class IMAPConfig(SubSettings):
     encryption: Annotated[Opt[EncryptionMode], Field()] = None
 
     watch_folder: Annotated[str, Field()] = "INBOX"
-    replied_folder: Annotated[str | None, Field()] = None
-    blocked_folder: Annotated[str | None, Field()] = None
+    replied_folder: Annotated[str | None, Field()] = "LLMailBot/Processed"
+    blocked_folder: Annotated[str | None, Field()] = "LLMailBot/Blocked"
     max_fetch_rate: Annotated[PositiveFloat, Field()] = 1.0
     idle_timeout: Annotated[PositiveInt, Field()] = 30
 
@@ -236,6 +236,17 @@ class ChatModelConfig(SubSettings):
         return {camel_to_snake_case(k): v for k, v in config.items()}
 
 
+DEFAULT_SYSTEM_PROMPT = """
+Your name is {name}. You are a helpful assistant.
+A user is communicating with you using email.
+Your email address is {bot_email}. The user's email address is {user_email}.
+You must compose a reply in text/plain format.
+Your reply must not include email headers such as To, From and Subject.
+Messages in email conversations are often ordered from newest to oldest.
+Reply to this email conversation:
+""".lstrip()
+
+
 class ModelSpec(SubSettings):
     name: str = Field(...)
 
@@ -243,7 +254,7 @@ class ModelSpec(SubSettings):
     address_regex: Annotated[Opt[str], Field()] = None
 
     max_input_length: Annotated[PositiveInt, Field()] = 5000
-    system_prompt: str = Field(...)
+    system_prompt: str = Field(DEFAULT_SYSTEM_PROMPT)
 
     params: ChatModelConfig = Field(
         default_factory=lambda: ChatModelConfig(),
