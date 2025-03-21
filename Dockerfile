@@ -5,7 +5,7 @@ FROM thehale/python-poetry:2.1.1-py3.12-slim AS build
 WORKDIR /app
 
 COPY pyproject.toml poetry.lock /app/
-COPY README.md /app/
+COPY README.pypi.md /app/
 COPY llmailbot /app/llmailbot
 # must run install at least once to ensure poetry plugins are installed
 # it works even with --dry-run
