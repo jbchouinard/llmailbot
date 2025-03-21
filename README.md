@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml/badge.svg)](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/docker/v/jbchouinard/llmailbot?logo=docker&label=Docker%20Hub)](https://hub.docker.com/r/jbchouinard/llmailbot)
+[![PyPI](https://img.shields.io/pypi/v/llmailbot?logo=python&logoColor=white)](https://pypi.org/project/llmailbot/)
 
 LLMailBot is a service that enables chatting with Large Language Models (LLMs) via email. It connects to an email account using IMAP/SMTP protocols, then automatically responds to incoming emails using LLM chat models like GPT-4, Claude, or other compatible models.
 
@@ -77,7 +78,10 @@ It seems to work OK with the models I tested, but your mileage may vary.
 
 2. **Install LLMailBot**:
    ```bash
-   # Install the base package
+   # Install from PyPI (recommended)
+   pipx install llmailbot
+   
+   # Or install directly from GitHub
    pipx install git+https://github.com/jbchouinard/llmailbot.git
    ```
 
