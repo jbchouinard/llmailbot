@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "llmailbot"
-version = "0.4.1"
+version = "0.4.2"
 description = "A service for automatically replying to emails using LLMs."
 authors = ["Jerome Boisvert-Chouinard <github@jbchouinard.net>"]
 readme = "README.pypi.md"
