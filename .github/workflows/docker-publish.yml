@@ -115,19 +115,19 @@ jobs:
           # The cache is handled by cache-from and cache-to
 
       # Generate attestation for slim variant
-      - name: Generate artifact attestation for slim
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: index.docker.io/jbchouinard/llmailbot:slim
-          subject-digest: ${{ steps.push-slim.outputs.digest }}
-          push-to-registry: true
+      # - name: Generate artifact attestation for slim
+      #   if: github.event_name != 'pull_request'
+      #   uses: actions/attest-build-provenance@v1
+      #   with:
+      #     subject-name: index.docker.io/jbchouinard/llmailbot:slim
+      #     subject-digest: ${{ steps.push-slim.outputs.digest }}
+      #     push-to-registry: true
 
       # Generate attestation for all variant
-      - name: Generate artifact attestation for all
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: index.docker.io/jbchouinard/llmailbot:all
-          subject-digest: ${{ steps.push-all.outputs.digest }}
-          push-to-registry: true
+      # - name: Generate artifact attestation for all
+      #   if: github.event_name != 'pull_request'
+      #   uses: actions/attest-build-provenance@v1
+      #   with:
+      #     subject-name: index.docker.io/jbchouinard/llmailbot:all
+      #     subject-digest: ${{ steps.push-all.outputs.digest }}
+      #     push-to-registry: true
