@@ -68,7 +68,6 @@ class MailboxWatcher(AsyncTask):
         self.blocked_folder = None
         self.mb = connect_mailbox(self.config, self.ssl_context, self.timeout)
         self.setup_folders()
-        self.subscribe_only(self.config.watch_folder)
         self.callback = callback
         self.uids = []
 
@@ -105,7 +104,8 @@ class MailboxWatcher(AsyncTask):
         else:
             logger.trace("No new messages, IDLE for {} seconds", self.config.idle_timeout)
             # IDLE timeout doesn't play well with asyncio
-            # TODO: use aioimaplib instead
+            # TODO: find solution to use IDLE without hanging the process or
+            # messing up the IMAP client states
             await asyncio.sleep(self.config.idle_timeout)
             # await asyncio.to_thread(self.mb.idle.wait, self.config.idle_timeout)
             return
@@ -145,17 +145,6 @@ class MailboxWatcher(AsyncTask):
         if self.config.blocked_folder:
             if not self.mb.folder.list(self.config.blocked_folder):
                 self.mb.folder.create(self.config.blocked_folder)
-
-    def subscribe_only(self, folder_name: str) -> bool:
-        found = False
-        for folder_info in self.mb.folder.list():
-            if folder_info.name == folder_name:
-                self.mb.folder.subscribe(folder_name, True)
-                found = True
-            else:
-                self.mb.folder.subscribe(folder_info.name, False)
-
-        return found
 
 
 def move_or_delete(mb: BaseMailBox, uid: str | list[str], folder: str | None):

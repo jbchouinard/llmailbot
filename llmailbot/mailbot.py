@@ -88,6 +88,7 @@ DEFAULT_CONFIGURABLE_FIELDS = frozenset(
         "model_provider",
         "max_tokens",
         "temperature",
+        "base_url",
     }
 )
 

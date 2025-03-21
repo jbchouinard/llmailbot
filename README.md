@@ -74,11 +74,7 @@ It seems to work OK with the models I tested, but your mileage may vary.
 
 ### Installation with Pipx
 
-1. **Prepare your configuration**:
-   - Save and edit a copy of [config.example.yaml](./config.example.yaml)
-   - If you place the config in a [standard location](#yaml-configuration-file-locations), you can omit the `--config` option
-
-2. **Install LLMailBot**:
+1. **Install LLMailBot**:
    ```bash
    # Install from PyPI (recommended)
    pipx install llmailbot
@@ -87,11 +83,23 @@ It seems to work OK with the models I tested, but your mileage may vary.
    pipx install git+https://github.com/jbchouinard/llmailbot.git
    ```
 
-3. **Add LangChain provider packages** for your preferred LLMs:
+2. **Add LangChain provider packages** for your preferred LLMs:
    ```bash
    # Install only the providers you need
    pipx inject llmailbot langchain-openai langchain-anthropic langchain-ollama
    ```
+
+3. **Create your configuration**:
+   ```bash
+   # Interactive configuration
+   llmailbot config interactive
+   
+   # Or generate an example configuration and edit it manually
+   llmailbot config example
+   # Then edit the generated config.yaml file
+   ```
+   
+   If you place the config in a [standard location](#yaml-configuration-file-locations), you can omit the `--config` option.
 
 4. **Start the service**:
    ```bash
@@ -102,7 +110,15 @@ It seems to work OK with the models I tested, but your mileage may vary.
 ### Deployment with Docker
 
 1. **Prepare your configuration**:
-   - Save and edit a copy of [config.example.yaml](./config.example.yaml) with your settings
+   - Use the interactive configuration command to create your config file:
+     ```bash
+     llmailbot config interactive
+     ```
+   - Or copy and edit the example configuration:
+     ```bash
+     llmailbot config example
+     # Then edit the generated config.yaml file
+     ```
 
 2. **Choose a Docker image variant**:
 
@@ -212,7 +228,7 @@ See [config.example.yaml](./config.example.yaml) for detailed configuration opti
 
 ## Configuration Options
 
-**⚠️ WARNING: If `OnFetch=Delete` is set in your config, LLMailBot will permanently delete emails after fetching them.**
+**⚠️ WARNING: If `RepliedFolder` or `BlockedFolder` are set to null, LLMailBot will delete emails instead of moving them.**
 
 All configuration options are documented in [config.example.yaml](./config.example.yaml) with explanations and examples.
 
