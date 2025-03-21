@@ -1,0 +1,37 @@
+IMAP:
+  WatchFolder: INBOX
+  RepliedFolder: LLMailBot/Processed
+  BlockedFolder: LLMailBot/Blocked
+  MaxFetchRate: 1.0
+  IdleTimeout: 30
+
+Security:
+  AllowFrom:
+    - "myname@example.com"
+  RateLimit:
+    Limit: 100
+    Window: 1 day
+
+Models:
+  - Name: MyChatBot
+    Address: mybot@example.com
+    MaxInputLength: 10000
+    SystemPrompt: |-
+      Your name is {name}. You are a helpful assistant.
+      A user is communicating with you using email.
+      Your email address is {bot_email}. The user's email address is {user_email}. 
+      You must compose a reply in text/plain format.
+      Your reply must not include email headers such as To, From and Subject.
+      Messages in email conversations are often ordered from newest to oldest.
+      Reply to this email conversation:
+    ChatModelConfig:
+      ModelProvider: openai
+      Model: gpt-3.5-turbo
+      Temperature: 0.2
+      MaxTokens: 2048
+
+ChatModelConfigurableFields:
+  - Model
+  - ModelProvider
+  - Temperature
+  - MaxTokens

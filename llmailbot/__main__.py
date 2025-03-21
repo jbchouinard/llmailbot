@@ -71,7 +71,7 @@ def example():
 
     # Get the example config from package resources
     example_config = (
-        importlib.resources.files("llmailbot").joinpath("../config.example.yaml").read_text()
+        importlib.resources.files("llmailbot").joinpath("../examples/config.yaml").read_text()
     )
 
     # Write to config.yaml

@@ -195,7 +195,7 @@ The repo has example files for deploying with Docker Compose in the [docker-comp
    - Better resource utilization across multiple CPU cores
    - Improved reliability through redundancy
 
-See [config.example.yaml](./config.example.yaml) for detailed configuration options and explanations.
+See [examples/config.yaml](./examples/config.yaml) for detailed configuration options and explanations.
 
 ### Development Setup with Poetry
 
@@ -230,7 +230,7 @@ See [config.example.yaml](./config.example.yaml) for detailed configuration opti
 
 **⚠️ WARNING: If `RepliedFolder` or `BlockedFolder` are set to null, LLMailBot will delete emails instead of moving them.**
 
-All configuration options are documented in [config.example.yaml](./config.example.yaml) with explanations and examples.
+All configuration options are documented in [examples/config.yaml](./examples/config.yaml) with explanations and examples.
 
 ### Configuration Sources (in order of precedence)
 

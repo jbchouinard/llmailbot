@@ -1,0 +1,8 @@
+{
+    "Type": "Redis",
+    "Host": "redis",
+    "Port": 6379,
+    "Password": "my-redis-password",
+    "Db": 0,
+    "Key": "llmailbot:mail:out"
+}

@@ -1,0 +1,6 @@
+{
+    "Username": "mybot@example.com",
+    "Password": "my-password",
+    "Server": "imap.example.com",
+    "Port": 993
+}

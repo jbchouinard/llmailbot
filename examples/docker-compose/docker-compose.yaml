@@ -22,7 +22,8 @@ services:
     environment:
       - LLMAILBOT_LOG_LEVEL=${LLMAILBOT_LOG_LEVEL:-INFO}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # + other API keys if necessary
   
   llmailbot-send:
     <<: *llmailbot-base
@@ -31,6 +32,7 @@ services:
   # Redis for message queuing
   redis:
     image: redis:alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
     volumes:
       - redis-data:/data
 
@@ -76,8 +78,8 @@ configs:
             Messages in email conversations are often ordered from newest to oldest.
             Reply to this email conversation:
           ChatModelConfig:
-            Model: gpt-3.5-turbo
             ModelProvider: openai
+            Model: gpt-3.5-turbo
             Temperature: 0.2
             MaxTokens: 2048
 
@@ -92,6 +94,7 @@ configs:
         Port: 6379
         Db: 0
         Timeout: 5
+        Password: ${REDIS_PASSWORD:-changeme}
 
       ReceiveQueue:
         Type: Redis
