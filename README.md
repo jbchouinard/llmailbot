@@ -168,12 +168,12 @@ It seems to work OK with the models I tested, but your mileage may vary.
 
 ### Deployment with Docker Compose
 
-The repo has example files for deploying with Docker Compose in the [docker-compose](./docker-compose) directory.
+The repo has example files for deploying with Docker Compose in the [docker-compose](./examples/docker-compose) directory.
 
 1. **Example files**:
-   - [docker-compose.yaml](./docker-compose/docker-compose.yaml) - Service configuration with Redis for queuing
-   - [config.yaml](./docker-compose/config.yaml) - Example configuration for Docker Compose setup
-   - [requirements.txt](./docker-compose/requirements.txt) - Example requirements for the slim variant
+   - [docker-compose.yaml](./examples/docker-compose/docker-compose.yaml) - Service configuration with Redis for queuing
+   - [config.yaml](./examples/docker-compose/config.yaml) - Example configuration for Docker Compose setup
+   - [requirements.txt](./examples/docker-compose/requirements.txt) - Example requirements for the slim variant
 
 2. **Start the services**:
    ```bash
