@@ -1,0 +1,9 @@
+include README.md
+include README.pypi.md
+include LICENSE
+include config.example.yaml
+recursive-include docker-compose *
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude .DS_Store
