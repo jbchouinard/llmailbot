@@ -90,6 +90,7 @@ jobs:
           provenance: false
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            variant=slim
           build-contexts: |
             pip-cache=type=cache,mode=max,target=/root/.cache/pip
 
@@ -99,7 +100,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.all
+          file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-all.outputs.tags }}
           labels: ${{ steps.meta-all.outputs.labels }}
@@ -109,6 +110,7 @@ jobs:
           provenance: false
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            variant=all
           build-contexts: |
             pip-cache=type=cache,mode=max,target=/root/.cache/pip
 

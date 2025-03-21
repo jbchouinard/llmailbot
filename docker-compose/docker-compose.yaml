@@ -1,41 +1,45 @@
 
 services:
-  llmailbot-fetch-1: &llmailbot
+  # Base service definition (never started directly)
+  llmailbot-base: &llmailbot-base
+    profiles: ["never"]
     build: ../
     image: jbchouinard/llmailbot:slim
-    container_name: llmailbot-fetch-1
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    depends_on:
+      - redis
+  
+  # Fetcher service - gets emails from IMAP
+  fetcher:
+    <<: *llmailbot-base
+    profiles: []
     command: run fetch
+  
+  # Worker service - processes emails with LLM
+  worker:
+    <<: *llmailbot-base
+    profiles: []
+    command: run reply
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./requirements.txt:/app/requirements.txt
-  
-  llmailbot-fetch-2:
-    <<: *llmailbot
-    container_name: llmailbot-fetch-2
-    command: run fetch
-
-  llmailbot-reply-1: &llmailbot-reply
-    <<: *llmailbot
-    container_name: llmailbot-reply-1
-    command: run reply
     environment:
-      - OPENAI_API_KEY=...
-      - ANTHROPIC_API_KEY=...
-
-  llmailbot-reply-2:
-    <<: *llmailbot-reply
-    container_name: llmailbot-reply-2
-
-  llmailbot-send-1:
-    <<: *llmailbot
-    container_name: llmailbot-send-1
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Add other API keys as needed
+  
+  # Sender service - sends replies via SMTP
+  sender:
+    <<: *llmailbot-base
+    profiles: []
     command: run send
-
-  llmailbot-send-2:
-    <<: *llmailbot
-    container_name: llmailbot-send-2
-    command: run send
-
+  
+  # Redis for message queuing
   redis:
     image: redis:alpine
-    container_name: llmailbot-redis
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

@@ -3,27 +3,27 @@
 [![CI](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml/badge.svg)](https://github.com/jbchouinard/llmailbot/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/docker/v/jbchouinard/llmailbot?logo=docker&label=Docker%20Hub)](https://hub.docker.com/r/jbchouinard/llmailbot)
 
-LLMailBot is a service that enables chatting with LLMs via email. It connects to an email account
-using IMAP/SMTP, then automatically responds to incoming emails using LLM chat models.
+LLMailBot is a service that enables chatting with Large Language Models (LLMs) via email. It connects to an email account using IMAP/SMTP protocols, then automatically responds to incoming emails using LLM chat models like GPT-4, Claude, or other compatible models.
 
-**LLMailBot may delete emails in the connected account, don't use it with a personal email account.**
+**⚠️ IMPORTANT: LLMailBot may delete emails in the connected account. Always use a dedicated email account created specifically for this purpose, never your personal email account.**
 
-Features:
- - uses [langchain chat models](https://python.langchain.com/docs/integrations/chat); compatible with most mainstream LLMs
- - basic security, including rate limiting and address filtering
- - dynamic model configuration based on pattern-matching email addresses
- - horizontally scaleable (using Redis queues)
+## Key Features
 
-## Security
+- **LLM Integration**: Uses [LangChain chat models](https://python.langchain.com/docs/integrations/chat) to provide compatibility with most mainstream LLMs
+- **Security**: Includes basic security features such as rate limiting and address filtering
+- **Dynamic Configuration**: Supports multiple model configurations based on pattern-matching email addresses
+- **Scalability**: Horizontally scalable architecture using Redis queues for high-volume deployments
+- **Flexible Deployment**: Run using Pipx, Docker, or Docker Compose depending on your needs
 
-**Since generally anyone can email anyone, using LLMailBot means you risk letting**
-**unauthorized people indirectly use your LLM API keys or access your self-hosted LLM.**
+## Security Considerations
 
-LLMailBot has basic address filtering, but it's not super secure.
-The bot will only reply to emails from addresses in the AllowFrom list.
-But AllowFrom only checks the From header on the emails, which is vulnerable to spoofing.
+**⚠️ WARNING: Since generally anyone can email anyone, using LLMailBot means you risk letting unauthorized people indirectly use your LLM API keys or access your self-hosted LLM.**
 
-### Email spoofing
+LLMailBot has basic address filtering, but it is not extremely secure:
+- LLMailBot will only reply to emails from addresses in the `AllowFrom` list configured in your settings.
+- However, the `AllowFrom` filter only checks the From header of incoming emails, which is vulnerable to spoofing.
+
+### Email Spoofing
 
 Email spoofing is possible because email From headers are just something the sender
 writes, they don't need to match where the email actually comes from.
@@ -33,30 +33,27 @@ to block malicious spoofed emails, but it's not perfect.
 Email spoofing tends to work due to misconfigured mail servers or domains.
 So if you only allow addresses from major email providers you should be relatively safe.
 
-To be even more safe, you may want to only allow emails from the same domain as the bot.
-For example, if the bot is set up on mybot@example.com, only allow myname@example.com,
+To be even more safe, you may want to only allow emails from the same domain as the service.
+For example, if LLMailBot is set up on myservice@example.com, only allow myname@example.com,
 myfriend@example.com, etc. It *should* be hard to trick a mail server
 into accepting spoofed emails claiming to be from its own domain.
 
 It's much more likely that example.com could be tricked into accepting spoofed emails
 from sketchy domains or the domains of small businesses with misconfigured domains/servers.
 
-### Recommendations
+### Security Recommendations
 
-I developed LLMailBot for my own personal use. Use it at your own risk. I'd recommend at a minimum:
+I developed LLMailBot for my own personal use. Use it at your own risk.
+
 - **Never connect LLMailBot to a personal email account** - it may delete your emails
-- Ideally, use a dedicated, brand new email account
-- Only allow specific addresses from domains you trust in AllowFrom
-- Use LLM API keys that have rate or cost limits you're comfortable with
-- Don't send sensitive information via email
-- Don't put sensitive information in system prompts
+- **Create a dedicated email account** specifically for LLMailBot usage
+- **Configure restrictive AllowFrom settings** - only allow specific addresses from domains you trust
+- **Set up API key limitations** - use LLM API keys with rate or cost limits you're comfortable with
+- **Avoid sensitive information** - don't send sensitive data via email or include it in system prompts
 
 ## Limitations
 
-LLMailBot is not a spam bot. It only responds when receiving an email, and
-only responds to the From address. It ignores Reply-To.
-
-Currently only plain text emails are supported. But for accessibility reasons,
+Only plain text emails are supported. But for accessibility reasons,
 well-behaved email clients **should** automatically include a text/plain alternative
 version when sending richly formatted emails.
 
@@ -65,96 +62,155 @@ LLMailBot does not store emails or track conversations.
 the reply. LLMailBot does the same when it replies.
 That way the context of the conversation is saved in the emails themselves.
 
-At the moment, the emails are minimally preprocessed, so the quality of responses
-depends on the ability of the model to "understand" a chain of quoted replies.
+Emails are minimally preprocessed, so the quality of responses
+depends on the ability of models to "understand" nested quoted replies.
 Messages in the chain are usually ordered from newest to oldest, unlike chat messages.
 It seems to work OK with the models I tested, but your mileage may vary.
 
 ## Getting started
 
-### Pipx
+### Installation with Pipx
 
-Save and edit a copy of [config.example.yaml](./config.example.yaml).
+1. **Prepare your configuration**:
+   - Save and edit a copy of [config.example.yaml](./config.example.yaml)
+   - If you place the config in a [standard location](#yaml-configuration-file-locations), you can omit the `--config` option
 
-If you place the config in a [standard location](#yaml-configuration-file-locations),
-you can omit the `--config` option.
+2. **Install LLMailBot**:
+   ```bash
+   # Install the base package
+   pipx install git+https://github.com/jbchouinard/llmailbot.git
+   ```
 
-```bash
-# Install llmailbot
-pipx install git+https://github.com/jbchouinard/llmailbot.git
+3. **Add LangChain provider packages** for your preferred LLMs:
+   ```bash
+   # Install only the providers you need
+   pipx inject llmailbot langchain-openai langchain-anthropic langchain-ollama
+   ```
 
-# Then install the langchain packages you need, for example:
-pipx inject llmailbot langchain-openai langchain-anthropic langchain-ollama
+4. **Start the service**:
+   ```bash
+   # Run with your configuration file
+   llmailbot --config path/to/config.yaml run
+   ```
 
-# Start the service
-llmailbot --config path/to/config.yaml run
-```
+### Deployment with Docker
 
-### Docker
+1. **Prepare your configuration**:
+   - Save and edit a copy of [config.example.yaml](./config.example.yaml) with your settings
 
-Save and edit a copy of [config.example.yaml](./config.example.yaml).
+2. **Choose a Docker image variant**:
 
-The docker image is built in two variants, `slim` and `all`.
+   #### Option A: `all` variant (larger but more convenient)
+   
+   The `all` variant includes these langchain provider packages pre-installed:
+   - langchain-ai21 - AI21 models (Jurassic)
+   - langchain-anthropic - Anthropic models (Claude)
+   - langchain-aws - AWS Bedrock models
+   - langchain-azure-ai - Azure OpenAI models
+   - langchain-cohere - Cohere models
+   - langchain-fireworks - Fireworks AI models
+   - langchain-google-genai - Google Gemini models
+   - langchain-google-vertexai - Google Vertex AI models
+   - langchain-groq - Groq models (LLaMA, Mixtral)
+   - langchain-mistralai - Mistral AI models
+   - langchain-nvidia-ai-endpoints - NVIDIA AI models
+   - langchain-openai - OpenAI models (GPT-3.5, GPT-4, etc.)
+   - langchain-together - Together AI models
+   - langchain-xai - XAI models
 
-The `all` variant includes the following langchain provider packages pre-installed:
-- langchain-openai - OpenAI models (GPT-3.5, GPT-4, etc.)
-- langchain-anthropic - Anthropic models (Claude)
-- langchain-groq - Groq models (LLaMA, Mixtral)
-- langchain-mistralai - Mistral AI models
-- langchain-google-genai - Google Gemini models
-- langchain-google-vertexai - Google Vertex AI models
-- langchain-azure-ai - Azure OpenAI models
-- langchain-aws - AWS Bedrock models
-- langchain-xai - XAI models
-- langchain-ollama - Ollama models (for self-hosting)
-- langchain-huggingface - Hugging Face models
-- langchain-deepseek - DeepSeek models
+   Run the `all` variant (works out of the box with most popular models):
+   ```bash
+   docker run -d --name llmailbot \
+     -v /absolute/path/to/config.yaml:/app/config.yaml \
+     jbchouinard/llmailbot:all
+   ```
 
-This variant should work out of the box with most popular models:
+   #### Option B: `slim` variant (smaller but requires extra setup)
+   
+   The `slim` variant has no langchain provider packages pre-installed, making it smaller but requiring additional setup:
 
-```bash
-docker run -v /path/to/config.yaml:/app/config.yaml jbchouinard/llmailbot:all
-```
+   1. Create a `requirements.txt` file with your needed providers, e.g.:
+      ```
+      # requirements.txt
+      langchain-openai
+      langchain-anthropic
+      ```
 
-The `slim` variant doesn't have any `langchain-*` packages installed.
-You must mount a [requirements.txt](./docker-compose/requirements.txt) file to install whatever
-provider packages you need, for example:
+   2. Run the `slim` variant with your requirements:
+      ```bash
+      docker run -d --name llmailbot \
+        -v /absolute/path/to/config.yaml:/app/config.yaml \
+        -v /absolute/path/to/requirements.txt:/app/requirements.txt \
+        jbchouinard/llmailbot:slim
+      ```
 
-```
-# requirements.txt
-langchain-openai
-langchain-anthropic
-```
+### Deployment with Docker Compose
 
-```bash
-docker run -v /path/to/config.yaml:/app/config.yaml -v /path/to/requirements.txt:/app/requirements.txt jbchouinard/llmailbot:slim
-```
+The repo has example files for deploying with Docker Compose in the [docker-compose](./docker-compose) directory.
 
-### Docker Compose
+1. **Example files**:
+   - [docker-compose.yaml](./docker-compose/docker-compose.yaml) - Service configuration with Redis for queuing
+   - [config.yaml](./docker-compose/config.yaml) - Example configuration for Docker Compose setup
+   - [requirements.txt](./docker-compose/requirements.txt) - Example requirements for the slim variant
 
-See [docker-compose.yaml](./docker-compose/docker-compose.yaml), [config.yaml](./docker-compose/config.yaml), and [requirements.txt](./docker-compose/requirements.txt) for a minimal example for
-running the service with replication, using Redis queues.
+2. **Start the services**:
+   ```bash
+   cd docker-compose
+   docker-compose up -d
+   ```
 
-See [config.example.yaml](./config.example.yaml) for more details on all the options.
+3. **Scale services horizontally** (optional):
+   ```bash
+   # Run 3 worker instances for parallel processing
+   docker-compose up -d --scale worker=3
+   
+   # You can scale any service as needed
+   docker-compose up -d --scale fetcher=2 --scale worker=5 --scale sender=2
+   ```
 
-### Poetry (for development)
+   The `--scale` option creates multiple instances of a service, enabling:
+   - Increased throughput by processing more emails in parallel
+   - Better resource utilization across multiple CPU cores
+   - Improved reliability through redundancy
 
-```bash
-git clone https://github.com/jbchouinard/llmailbot.git
-cd llmailbot
-# To add more langchain providers for dev:
-poetry add --group langchain langchain-groq langchain-ollama
-poetry install --with langchain
-poetry run llmailbot --help
-```
+See [config.example.yaml](./config.example.yaml) for detailed configuration options and explanations.
 
-## Configuration
+### Development Setup with Poetry
 
-**If OnFetch=Delete in the config, LLMailBot may delete all the emails in the connected account.**
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/jbchouinard/llmailbot.git
+   cd llmailbot
+   ```
 
-Configuration options are documented in [config.example.yaml](./config.example.yaml).
+2. **Install dependencies**:
+   ```bash
+   # Install base dependencies
+   poetry install
+   
+   # (Optional) Add additional langchain providers
+   poetry add --group langchain langchain-ollama
+   
+   # Install with langchain group
+   poetry install --with langchain
+   ```
 
-### Configuration sources (in order of precedence)
+3. **Run the application**:
+   ```bash
+   # View available commands
+   poetry run llmailbot --help
+   
+   # Run with a config file
+   poetry run llmailbot --config path/to/config.yaml run
+   ```
+
+## Configuration Options
+
+**⚠️ WARNING: If `OnFetch=Delete` is set in your config, LLMailBot will permanently delete emails after fetching them.**
+
+All configuration options are documented in [config.example.yaml](./config.example.yaml) with explanations and examples.
+
+### Configuration Sources (in order of precedence)
 
 llmailbot loads configuration from multiple sources:
 
@@ -162,7 +218,7 @@ llmailbot loads configuration from multiple sources:
 2. **YAML File**: Loaded from one of several possible locations
 3. **Secret Files**: Loaded from `/run/secrets` and `/var/run/secrets/llmailbot/`
 
-### YAML configuration file locations
+### YAML Configuration File Locations
 
 If the config file location is not specified by the --config CLI options,
 the app searches for a YAML configuration file in the following locations (in order):
@@ -174,7 +230,7 @@ the app searches for a YAML configuration file in the following locations (in or
    - **macOS**: `~/Library/Preferences/net.pigeonland.llmailbot.yaml`
    - **Linux/Other**: `~/.config/net.pigeonland.llmailbot.yaml` (follows XDG Base Directory Specification)
 
-### Secret files
+### Secret Files
 
 Configuration can be loaded from secrets files (e.g. produced by Docker Secrets).
 
@@ -209,16 +265,31 @@ This project uses GitHub Actions for continuous integration and delivery:
   - Builds and pushes Docker images to Docker Hub
   - Creates two variants: `slim` (without langchain packages) and `all` (with langchain packages)
 
-### Apply linting and formatting fixes locally:
+### Development Workflow
 
+#### Code Quality
+
+Apply linting and formatting fixes locally:
 ```bash
-poetry run ruff check --fix; poetry run ruff format
+# Run linting checks and auto-fix issues
+poetry run ruff check --fix
+
+# Format code according to project standards
+poetry run ruff format
 ```
 
-### Run tests locally:
+#### Testing
 
+Run the test suite locally:
 ```bash
+# Run all tests
 poetry run pytest tests
+
+# Run with verbose output
+poetry run pytest -v tests
+
+# Run a specific test file
+poetry run pytest tests/test_specific_module.py
 ```
 
 ## License
