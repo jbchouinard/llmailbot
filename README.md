@@ -168,12 +168,9 @@ It seems to work OK with the models I tested, but your mileage may vary.
 
 ### Deployment with Docker Compose
 
-The repo has example files for deploying with Docker Compose in the [docker-compose](./examples/docker-compose) directory.
+The repo has an example [docker-compose.yaml](./examples/docker-compose/docker-compose.yaml),
+using inline configuration.
 
-1. **Example files**:
-   - [docker-compose.yaml](./examples/docker-compose/docker-compose.yaml) - Service configuration with Redis for queuing
-   - [config.yaml](./examples/docker-compose/config.yaml) - Example configuration for Docker Compose setup
-   - [requirements.txt](./examples/docker-compose/requirements.txt) - Example requirements for the slim variant
 
 2. **Start the services**:
    ```bash
@@ -189,11 +186,6 @@ The repo has example files for deploying with Docker Compose in the [docker-comp
    # You can scale any service as needed
    docker-compose up -d --scale fetcher=2 --scale worker=5 --scale sender=2
    ```
-
-   The `--scale` option creates multiple instances of a service, enabling:
-   - Increased throughput by processing more emails in parallel
-   - Better resource utilization across multiple CPU cores
-   - Improved reliability through redundancy
 
 See [examples/config.yaml](./examples/config.yaml) for detailed configuration options and explanations.
 
