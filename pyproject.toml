@@ -25,7 +25,7 @@ documentation = "https://github.com/jbchouinard/llmailbot#readme"
 poetry-plugin-export = ">=1.8"
 
 [tool.poetry.scripts]
-llmailbot = "llmailbot.__main__:cli"
+llmailbot = "llmailbot.__main__:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "cython"]
