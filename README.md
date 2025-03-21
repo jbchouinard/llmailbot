@@ -200,8 +200,8 @@ See [examples/config.yaml](./examples/config.yaml) for detailed configuration op
 ### Deployment with Docker Swarm
 
 The repo contains two example stacks for deployment with `docker stack deploy`:
-1. [docker-stack.simple.yaml](./docker-swarm/docker-stack.simple.yaml) - Single container with in-memory queues
-2. [docker-stack.redis.yaml](./docker-swarm/docker-stack.redis.yaml) - Multi-containers with Redis queues
+1. [docker-stack.simple.yaml](./examples/docker-swarm/docker-stack.simple.yaml) - Single container with in-memory queues
+2. [docker-stack.redis.yaml](./examples/docker-swarm/docker-stack.redis.yaml) - Multi-containers with Redis queues
 
 They are the better starting point for a production-style deployment as they use docker secrets for
 all sensitive config.
