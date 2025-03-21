@@ -81,6 +81,8 @@ jobs:
           tags: llmailbot:slim-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            variant=slim
           
       - name: Test slim Docker image
         run: docker run --rm llmailbot:slim-test --help
@@ -90,6 +92,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            variant=all
           push: false
           load: true
           tags: llmailbot:all-test
